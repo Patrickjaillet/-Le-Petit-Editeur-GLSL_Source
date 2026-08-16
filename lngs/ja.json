@@ -1,0 +1,314 @@
+{
+  "_meta": {
+    "code": "ja",
+    "name": "日本語",
+    "englishName": "Japanese"
+  },
+  "app": {
+    "window_title": "Petit Editeur GLSL v{version}",
+    "toolbar_name": "メイン"
+  },
+  "tabs": {
+    "image": "画像",
+    "buffer_a": "バッファ A",
+    "buffer_b": "バッファ B",
+    "buffer_c": "バッファ C",
+    "buffer_d": "バッファ D",
+    "common": "共通"
+  },
+  "menu": {
+    "file": {
+      "title": "ファイル(&F)",
+      "new": "新規(&N)",
+      "open": "開く(&O)…",
+      "recent_files": "最近使用したファイル(&R)",
+      "recent_files_empty": "(なし)",
+      "open_project": "プロジェクトを開く(&P)…",
+      "import_shadertoy": "Shadertoy からインポート(&S)…",
+      "save_as": "名前を付けて保存(&A)…",
+      "save_project": "プロジェクトを名前を付けて保存(&J)…",
+      "export_golfed": "ゴルフ後のコードをエクスポート(&E)…",
+      "export_png": "画像をエクスポート (PNG)(&I)…",
+      "export_video": "動画をエクスポート (MP4)(&V)…",
+      "preferences": "環境設定(&P)…",
+      "quit": "終了(&Q)"
+    },
+    "edit": {
+      "title": "編集(&E)",
+      "undo": "元に戻す(&U)",
+      "redo": "やり直す(&R)",
+      "golf": "コードをゴルフする(&G)",
+      "golf_all": "プロジェクト全体をゴルフする(&T)",
+      "undo_golf": "ゴルフを元に戻す(&U)",
+      "shortcuts": "キーボードショートカット(&K)…"
+    },
+    "help": {
+      "title": "ヘルプ(&H)",
+      "about": "バージョン情報"
+    }
+  },
+  "toolbar": {
+    "compile": "コンパイル",
+    "play": "再生",
+    "pause": "一時停止",
+    "play_pause_tooltip": "時間 (iTime) を再生/一時停止 — キーフレームを持つスライダーもアニメーションします",
+    "reset_time": "時間をリセット",
+    "reset_time_tooltip": "iTime を 0 にリセットします — キーフレームシーケンスを最初から再生し直すのに便利です",
+    "golf": "ゴルフ 🏌"
+  },
+  "actions": {
+    "file.new": "ファイル: 新規",
+    "file.open": "ファイル: 開く…",
+    "file.open_project": "ファイル: プロジェクトを開く…",
+    "file.import_shadertoy": "ファイル: Shadertoy からインポート…",
+    "file.save_as": "ファイル: 名前を付けて保存…",
+    "file.save_project": "ファイル: プロジェクトを名前を付けて保存…",
+    "file.export_golfed": "ファイル: ゴルフ後のコードをエクスポート…",
+    "file.export_png": "ファイル: 画像をエクスポート (PNG)…",
+    "file.export_video": "ファイル: 動画をエクスポート (MP4)…",
+    "file.preferences": "ファイル: 環境設定…",
+    "file.quit": "ファイル: 終了",
+    "edit.undo": "編集: 元に戻す",
+    "edit.redo": "編集: やり直す",
+    "edit.golf": "編集: コードをゴルフする",
+    "edit.golf_all": "編集: プロジェクト全体をゴルフする",
+    "edit.undo_golf": "編集: ゴルフを元に戻す",
+    "toolbar.compile": "ツールバー: コンパイル",
+    "toolbar.play_pause": "ツールバー: 再生/一時停止",
+    "toolbar.reset_time": "ツールバー: 時間をリセット",
+    "toolbar.golf": "ツールバー: ゴルフ"
+  },
+  "dialogs": {
+    "about": {
+      "title": "バージョン情報",
+      "body": "Le Petit Editeur GLSL — バージョン {version}\nCopyright © 2026 Patrick JAILLET — All rights reserved\nメール: sandefjord.development@proton.me\nウェブサイト: https://patrickjaillet.github.io/Le-Petit-Editeur-GLSL"
+    },
+    "golf_options": {
+      "title": "コードをゴルフする",
+      "intro": "ゴルフは常にコメントを削除し、空白をまとめ、数値リテラルを短縮します。値(および自動検出されるスライダー)は、以下の設定にかかわらず変更されません。",
+      "rename": "識別子(変数/関数)の名前を変更する",
+      "dead_code": "デッドコード(未使用の関数/構造体)を削除する",
+      "algebra": "代数式を簡略化する (x*0., x*1., x+0., ...)",
+      "algebra_tooltip": "メンバーアクセス/スウィズルを含む式(例: p.z*0.)で、まれに無効なコードが生成されることがあります — その場合、ゴルフは自動的にロールバックされます(「ゴルフを中止しました」ダイアログを参照)。これが頻繁に発生する場合はこのオプションのチェックを外してください。"
+    },
+    "golf_common_confirm": {
+      "title": "コードをゴルフする",
+      "body": "ゴルフはコメントを削除し、空白と数値リテラルをまとめます。共通は名前変更も削除もされません(その宣言は、別々にゴルフされる他のパスで使用されます)。\n\n続行しますか?"
+    },
+    "golf_cancelled": {
+      "title": "ゴルフを中止しました",
+      "body": "ゴルフ後のコードがコンパイルできなくなりました — エディターは変更されていません。おそらくゴルファーのバグです。報告してください。\n\nコンパイルエラー:\n{error}",
+      "body_all_or_nothing": "[{label}] ゴルフ後のコードがコンパイルできません(共通をゴルフした状態)— 何も変更されませんでした(オール・オア・ナッシング)。\n\nコンパイルエラー:\n{error}"
+    },
+    "undo_golf": {
+      "title": "ゴルフを元に戻す",
+      "body": "元に戻すゴルフがありません。"
+    },
+    "golf_export_cancelled": {
+      "title": "エクスポートを中止しました",
+      "body": "ゴルフ後のコードがコンパイルできなくなりました — 何もエクスポートされませんでした。おそらくゴルファーのバグです。報告してください。\n\nコンパイルエラー:\n{error}"
+    },
+    "golf_all_result": {
+      "title": "プロジェクト全体をゴルフする",
+      "body": "{pass_count} パス + 共通をゴルフしました: {before} -> {after} バイト (-{percent}%)。"
+    },
+    "unsaved_changes": {
+      "title": "未保存の変更",
+      "body": "現在のプロジェクトには未保存の変更があります。続行してこれらを破棄しますか?"
+    },
+    "open_shader": {
+      "title": "シェーダーを開く",
+      "filter": "GLSL (*.frag *.glsl *.txt)"
+    },
+    "open_project": {
+      "title": "プロジェクトを開く",
+      "filter": "プロジェクト (*.json)"
+    },
+    "open_error": {
+      "title": "開く",
+      "body": "「{path}」を読み込めませんでした:\n{error}"
+    },
+    "import_shadertoy": {
+      "title": "Shadertoy からインポート",
+      "prompt": "Shadertoy のリンクまたは ID(例: https://www.shadertoy.com/view/XsBXWt、または単に XsBXWt):",
+      "invalid_id": "Shadertoy のリンクまたは ID を認識できませんでした。Shadertoy の ID は英数字6文字です(例: XsBXWt)。単独、または shadertoy.com/view/… や shadertoy.com/embed/… の URL 内で指定してください。"
+    },
+    "shadertoy_api_key": {
+      "title": "Shadertoy API キー",
+      "prompt": "シェーダーをインポートするには Shadertoy API キーが必要です(無料: shadertoy.com → プロフィール → Apps)。今後のインポートのために記憶されます(環境設定で編集可能):"
+    },
+    "import_shadertoy_partial": {
+      "title": "Shadertoy の部分的インポート",
+      "body": "シェーダーはインポートされましたが、いくつかの制限があります:\n\n- {warnings}"
+    },
+    "save_as": {
+      "title": "名前を付けて保存",
+      "filter": "GLSL (*.frag *.glsl)"
+    },
+    "save_project": {
+      "title": "プロジェクトを保存",
+      "filter": "プロジェクト (*.json)"
+    },
+    "export_golfed": {
+      "title": "ゴルフ後のコードをエクスポート",
+      "filter": "GLSL (*.frag *.glsl)"
+    },
+    "export_png": {
+      "title": "画像をエクスポート",
+      "nothing_to_export": "現在エクスポートするものがありません。"
+    },
+    "export_video": {
+      "title": "動画をエクスポート (MP4)",
+      "duration_group": "長さ",
+      "duration_seconds": "秒",
+      "duration_frames": "…またはフレーム数で直接指定",
+      "fps_group": "フレームレート (fps)",
+      "fps_custom": "カスタム",
+      "resolution_group": "出力解像度",
+      "resolution_width": "幅",
+      "resolution_height": "高さ",
+      "compression_group": "圧縮",
+      "compression_advanced": "詳細設定(正確な CRF 値)",
+      "crf_preset_quality": "高品質",
+      "crf_preset_balanced": "バランス",
+      "crf_preset_smallest": "最小サイズ",
+      "estimated_size": "推定サイズ: ~{size}",
+      "save_dialog_title": "動画をエクスポート",
+      "save_dialog_default_name": "shader.mp4",
+      "save_dialog_filter": "動画 (*.mp4)",
+      "ffmpeg_missing": "ffmpeg が見つかりません ({path})。\n\nCOMPILATION.md の「動画エクスポート」セクションを参照してください。期待されるバイナリは packaging/bin/ffmpeg.exe です。",
+      "export_failed": "エクスポートに失敗しました:\n{error}",
+      "export_success": "動画のエクスポートに成功しました ({frames} フレーム、{width}×{height} @ {fps} fps):\n{path}"
+    },
+    "export_progress": {
+      "title": "動画をエクスポート (MP4)",
+      "capture_label": "レンダリング中",
+      "capture_progress": "レンダリング中: {done}/{total} フレーム",
+      "encode_label": "動画をエンコード中…",
+      "cancel": "キャンセル",
+      "cancelling": "キャンセル中…"
+    },
+    "preferences": {
+      "title": "環境設定",
+      "editor_font_size": "エディターのフォントサイズ",
+      "minimap": "ミニマップ",
+      "compile_debounce": "コンパイルの遅延時間",
+      "shadertoy_api_key": "Shadertoy API キー",
+      "shadertoy_api_key_placeholder": "(空欄 = 次回インポート時に再度確認)",
+      "language": "言語",
+      "language_restart_notice": "言語の変更は次回アプリケーション起動時に反映されます。"
+    },
+    "shortcuts": {
+      "title": "キーボードショートカット",
+      "hint": "ショートカットをダブルクリックすると変更できます。フィールドを空にすると無効になります。",
+      "column_command": "コマンド",
+      "column_shortcut": "ショートカット",
+      "reset_row": "リセット",
+      "reset_all": "すべてリセット",
+      "duplicate_title": "キーボードショートカット",
+      "duplicate_body": "同じショートカットが2つのコマンドで使用されています:\n「{first}」と「{second}」。\n\n確定する前にどちらか一方を変更してください。"
+    },
+    "cubemap": {
+      "title": "iChannel{index} のキューブマップ",
+      "browse": "参照…",
+      "face_row": "面 {face}",
+      "choose_face_image": "面の画像を選択",
+      "missing_faces_title": "キューブマップ",
+      "missing_faces_body": "6面すべてを設定する必要があります。"
+    },
+    "slider_bounds": {
+      "title": "スライダーの範囲",
+      "min": "最小",
+      "max": "最大",
+      "decimals": "小数桁数",
+      "menu_edit": "最小 / 最大を編集…"
+    },
+    "color_picker": {
+      "title": "色を選択"
+    },
+    "video_error": {
+      "title": "動画",
+      "body": "「{path}」を再生できませんでした:\n{error}"
+    },
+    "audio_error": {
+      "title": "オーディオ",
+      "body": "「{path}」を再生できませんでした:\n{error}"
+    },
+    "webcam_error": {
+      "title": "ウェブカメラ",
+      "no_webcam": "このマシンにウェブカメラが検出されませんでした。",
+      "camera_prompt": "iChannel{index} 用のカメラ:"
+    },
+    "ichannel_error": {
+      "title": "iChannel"
+    }
+  },
+  "sliders_panel": {
+    "filter_placeholder": "絞り込み…",
+    "clear_category_keyframes_tooltip": "このカテゴリーのすべてのスライダーのキーフレームを消去します。フィルターで現在非表示のスライダーも対象です",
+    "reset_value_tooltip": "この値をリセット",
+    "randomize_value_tooltip": "この値をランダム化",
+    "component_labels_rgb": [
+      "R",
+      "G",
+      "B"
+    ],
+    "component_labels_rgba": [
+      "R",
+      "G",
+      "B",
+      "A"
+    ],
+    "component_labels_xy": [
+      "X",
+      "Y"
+    ],
+    "add_keyframe_menu": "キーフレームを追加 (t={time}秒)",
+    "clear_keyframes_menu": "キーフレームを消去",
+    "add_keyframe_tooltip": "現在の時間にキーフレームを追加 (t={time}秒)",
+    "keyframe_button_tooltip": "クリック: t={time}秒で追加/更新 — 右クリック: その他のオプション",
+    "reset_category": "↺ カテゴリーをリセット",
+    "reset_category_tooltip": "フィルターで現在非表示になっているものも含め、このカテゴリのすべての値に適用されます。",
+    "randomize_category": "🎲 カテゴリーをランダム化",
+    "randomize_category_tooltip": "フィルターで現在非表示になっているものも含め、このカテゴリのすべての値に適用されます。",
+    "clear_category_keyframes": "⏱ キーフレームを消去",
+    "keyframe_times_tooltip": "{count} 個のキーフレーム: {times}\n"
+  },
+  "ichannel_panel": {
+    "video_filter": "動画 (*.mp4 *.mov *.m4v *.avi *.mkv *.webm)",
+    "audio_filter": "オーディオ (*.mp3 *.wav *.ogg *.flac)",
+    "image_filter": "画像 (*.png *.jpg *.jpeg *.bmp)",
+    "source_empty": "空",
+    "source_image": "画像(ファイル)",
+    "source_video": "動画(ファイル)…",
+    "source_audio": "オーディオ(ファイル)…",
+    "source_webcam": "ウェブカメラ",
+    "source_cubemap": "キューブマップ(6画像)",
+    "source_keyboard": "キーボード (iKeyboard)",
+    "procedural_checker": "チェッカーボード",
+    "procedural_white_noise": "ホワイトノイズ",
+    "procedural_value_noise": "バリューノイズ",
+    "browse": "参照…",
+    "change_cubemap": "面を編集…",
+    "change_video": "動画を変更…",
+    "change_audio": "オーディオを変更…",
+    "change_webcam": "ウェブカメラを変更…",
+    "choose_video": "iChannel{index} 用の動画を選択",
+    "choose_audio": "iChannel{index} 用のオーディオファイルを選択",
+    "choose_image": "iChannel{index} 用の画像を選択",
+    "procedural_suffix": "{label}(プロシージャル)",
+    "thumb_empty": "空",
+    "thumb_cube": "CUBE",
+    "default_webcam_tooltip": "既定のウェブカメラ"
+  },
+  "footer": {
+    "fps": "FPS: {fps}",
+    "ready": "準備完了",
+    "compile_ok": "コンパイル成功",
+    "compile_error": "エラー: {message}",
+    "frame_time_tooltip": "フレームごとのレンダリング時間(赤いバー = 約30 FPSより遅い)",
+    "size_tooltip": "ゴルフ前後の生サイズと推定 gzip サイズ(実際に転送/保存されるサイズの近似値)。マーカー(< 2 KB / < 4 KB / < 8 KB)は、伝統的なデモシーン 4k/8k コンポの基準に対応しており、ゴルフ後の生サイズを基準としています — 外部スコアとのオンライン比較ではありません。",
+    "size_format": "{before} -> {after} バイト (-{percent}%) | gzip {before_gz} -> {after_gz}{tier_suffix}",
+    "size_tier": "< {kb} KB"
+  }
+}

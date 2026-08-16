@@ -1,0 +1,314 @@
+{
+  "_meta": {
+    "code": "no",
+    "name": "Norsk",
+    "englishName": "Norwegian"
+  },
+  "app": {
+    "window_title": "Petit Editeur GLSL v{version}",
+    "toolbar_name": "Hoved"
+  },
+  "tabs": {
+    "image": "Bilde",
+    "buffer_a": "Buffer A",
+    "buffer_b": "Buffer B",
+    "buffer_c": "Buffer C",
+    "buffer_d": "Buffer D",
+    "common": "Felles"
+  },
+  "menu": {
+    "file": {
+      "title": "&Fil",
+      "new": "&Ny",
+      "open": "&Åpne…",
+      "recent_files": "&Nylige filer",
+      "recent_files_empty": "(ingen)",
+      "open_project": "Åpne et &prosjekt…",
+      "import_shadertoy": "Importer fra &Shadertoy…",
+      "save_as": "L&agre som…",
+      "save_project": "Lagre &prosjektet som…",
+      "export_golfed": "&Eksporter golfet kode…",
+      "export_png": "Eksporter et &bilde (PNG)…",
+      "export_video": "Eksporter en &video (MP4)…",
+      "preferences": "&Innstillinger…",
+      "quit": "&Avslutt"
+    },
+    "edit": {
+      "title": "&Rediger",
+      "undo": "&Angre",
+      "redo": "&Gjør om",
+      "golf": "&Golf koden",
+      "golf_all": "Golf &hele prosjektet",
+      "undo_golf": "Angre &golfen",
+      "shortcuts": "&Tastatursnarveier…"
+    },
+    "help": {
+      "title": "&Hjelp",
+      "about": "Om"
+    }
+  },
+  "toolbar": {
+    "compile": "Kompiler",
+    "play": "Spill av",
+    "pause": "Pause",
+    "play_pause_tooltip": "Spill av/pause tiden (iTime) — animerer også glidebrytere med nøkkelbilder",
+    "reset_time": "Tilbakestill tiden",
+    "reset_time_tooltip": "Tilbakestiller iTime til 0 — nyttig for å spille av en nøkkelbildesekvens fra begynnelsen igjen",
+    "golf": "Golf 🏌"
+  },
+  "actions": {
+    "file.new": "Fil: Ny",
+    "file.open": "Fil: Åpne…",
+    "file.open_project": "Fil: Åpne et prosjekt…",
+    "file.import_shadertoy": "Fil: Importer fra Shadertoy…",
+    "file.save_as": "Fil: Lagre som…",
+    "file.save_project": "Fil: Lagre prosjektet som…",
+    "file.export_golfed": "Fil: Eksporter golfet kode…",
+    "file.export_png": "Fil: Eksporter et bilde (PNG)…",
+    "file.export_video": "Fil: Eksporter en video (MP4)…",
+    "file.preferences": "Fil: Innstillinger…",
+    "file.quit": "Fil: Avslutt",
+    "edit.undo": "Rediger: Angre",
+    "edit.redo": "Rediger: Gjør om",
+    "edit.golf": "Rediger: Golf koden",
+    "edit.golf_all": "Rediger: Golf hele prosjektet",
+    "edit.undo_golf": "Rediger: Angre golfen",
+    "toolbar.compile": "Verktøylinje: Kompiler",
+    "toolbar.play_pause": "Verktøylinje: Spill av/Pause",
+    "toolbar.reset_time": "Verktøylinje: Tilbakestill tiden",
+    "toolbar.golf": "Verktøylinje: Golf"
+  },
+  "dialogs": {
+    "about": {
+      "title": "Om",
+      "body": "Le Petit Editeur GLSL — versjon {version}\nCopyright © 2026 Patrick JAILLET — Med enerett\nE-post: sandefjord.development@proton.me\nNettside: https://patrickjaillet.github.io/Le-Petit-Editeur-GLSL"
+    },
+    "golf_options": {
+      "title": "Golf koden",
+      "intro": "Golfing fjerner alltid kommentarer, komprimerer mellomrom og forkorter numeriske literaler. Verdier (og dermed de automatisk gjenkjente glidebryterne) forblir uendret uansett innstillingene nedenfor.",
+      "rename": "Gi nytt navn til identifikatorer (variabler/funksjoner)",
+      "dead_code": "Fjern død kode (funksjoner/strukturer som aldri brukes)",
+      "algebra": "Forenkle algebraiske uttrykk (x*0., x*1., x+0., ...)",
+      "algebra_tooltip": "Kan av og til produsere ugyldig kode i uttrykk som involverer medlemstilgang/swizzle (f.eks. p.z*0.) — i så fall blir golfen automatisk tilbakestilt (se dialogboksen «Golf avbrutt»). Fjern haken her hvis dette skjer ofte for deg."
+    },
+    "golf_common_confirm": {
+      "title": "Golf koden",
+      "body": "Golfing fjerner kommentarer og komprimerer mellomrom og numeriske literaler. Felles blir aldri omdøpt eller beskåret (deklarasjonene brukes av andre pass som golfes separat).\n\nFortsette?"
+    },
+    "golf_cancelled": {
+      "title": "Golf avbrutt",
+      "body": "Den golfede koden kompilerer ikke lenger — editoren ble ikke endret. Dette er sannsynligvis en feil i golferen, vennligst rapporter den.\n\nKompileringsfeil:\n{error}",
+      "body_all_or_nothing": "[{label}] den golfede koden kompilerer ikke lenger (med Felles golfet) — ingenting ble endret (alt eller ingenting).\n\nKompileringsfeil:\n{error}"
+    },
+    "undo_golf": {
+      "title": "Angre golfen",
+      "body": "Ingen golf å angre."
+    },
+    "golf_export_cancelled": {
+      "title": "Eksport avbrutt",
+      "body": "Den golfede koden kompilerer ikke lenger — ingenting ble eksportert. Dette er sannsynligvis en feil i golferen, vennligst rapporter den.\n\nKompileringsfeil:\n{error}"
+    },
+    "golf_all_result": {
+      "title": "Golf hele prosjektet",
+      "body": "{pass_count} pass(er) + Felles golfet: {before} -> {after} byte (-{percent}%)."
+    },
+    "unsaved_changes": {
+      "title": "Ulagrede endringer",
+      "body": "Det gjeldende prosjektet har ulagrede endringer. Fortsette og miste dem?"
+    },
+    "open_shader": {
+      "title": "Åpne en shader",
+      "filter": "GLSL (*.frag *.glsl *.txt)"
+    },
+    "open_project": {
+      "title": "Åpne et prosjekt",
+      "filter": "Prosjekt (*.json)"
+    },
+    "open_error": {
+      "title": "Åpne",
+      "body": "Kunne ikke laste «{path}»:\n{error}"
+    },
+    "import_shadertoy": {
+      "title": "Importer fra Shadertoy",
+      "prompt": "Shadertoy-lenke eller -ID (f.eks. https://www.shadertoy.com/view/XsBXWt, eller bare XsBXWt):",
+      "invalid_id": "Ugjenkjennelig Shadertoy-lenke eller -ID. En Shadertoy-ID består av 6 alfanumeriske tegn (f.eks. XsBXWt), alene eller i en shadertoy.com/view/…- eller shadertoy.com/embed/…-URL."
+    },
+    "shadertoy_api_key": {
+      "title": "Shadertoy API-nøkkel",
+      "prompt": "En Shadertoy API-nøkkel kreves for å importere en shader (gratis: shadertoy.com → din profil → Apps). Den lagres for fremtidige importer (kan endres i Innstillinger):"
+    },
+    "import_shadertoy_partial": {
+      "title": "Delvis Shadertoy-import",
+      "body": "Shaderen ble importert, med noen begrensninger:\n\n- {warnings}"
+    },
+    "save_as": {
+      "title": "Lagre som",
+      "filter": "GLSL (*.frag *.glsl)"
+    },
+    "save_project": {
+      "title": "Lagre prosjektet",
+      "filter": "Prosjekt (*.json)"
+    },
+    "export_golfed": {
+      "title": "Eksporter golfet kode",
+      "filter": "GLSL (*.frag *.glsl)"
+    },
+    "export_png": {
+      "title": "Eksporter et bilde",
+      "nothing_to_export": "Ingenting å eksportere akkurat nå."
+    },
+    "export_video": {
+      "title": "Eksporter en video (MP4)",
+      "duration_group": "Varighet",
+      "duration_seconds": "Sekunder",
+      "duration_frames": "… eller direkte i bilder",
+      "fps_group": "Bilder per sekund",
+      "fps_custom": "Egendefinert",
+      "resolution_group": "Utgangsoppløsning",
+      "resolution_width": "Bredde",
+      "resolution_height": "Høyde",
+      "compression_group": "Komprimering",
+      "compression_advanced": "Avansert (nøyaktig CRF-verdi)",
+      "crf_preset_quality": "Kvalitet",
+      "crf_preset_balanced": "Balansert",
+      "crf_preset_smallest": "Minste størrelse",
+      "estimated_size": "Anslått størrelse: ~{size}",
+      "save_dialog_title": "Eksporter en video",
+      "save_dialog_default_name": "shader.mp4",
+      "save_dialog_filter": "Video (*.mp4)",
+      "ffmpeg_missing": "Fant ikke ffmpeg ({path}).\n\nSe COMPILATION.md, avsnittet «Videoeksport»: forventet binærfil er packaging/bin/ffmpeg.exe.",
+      "export_failed": "Eksport mislyktes:\n{error}",
+      "export_success": "Video eksportert uten problemer ({frames} bilder, {width}×{height} @ {fps} fps):\n{path}"
+    },
+    "export_progress": {
+      "title": "Eksporter en video (MP4)",
+      "capture_label": "Rendrer",
+      "capture_progress": "Rendrer: {done}/{total} bilder",
+      "encode_label": "Koder videoen…",
+      "cancel": "Avbryt",
+      "cancelling": "Avbryter…"
+    },
+    "preferences": {
+      "title": "Innstillinger",
+      "editor_font_size": "Skriftstørrelse i editor",
+      "minimap": "Minikart",
+      "compile_debounce": "Kompileringsforsinkelse",
+      "shadertoy_api_key": "Shadertoy API-nøkkel",
+      "shadertoy_api_key_placeholder": "(tom = spørres på nytt ved neste import)",
+      "language": "Språk",
+      "language_restart_notice": "Språkendringen trer i kraft neste gang applikasjonen startes."
+    },
+    "shortcuts": {
+      "title": "Tastatursnarveier",
+      "hint": "Dobbeltklikk på en snarvei for å endre den. La feltet stå tomt for å deaktivere den.",
+      "column_command": "Kommando",
+      "column_shortcut": "Snarvei",
+      "reset_row": "Tilbakestill",
+      "reset_all": "Tilbakestill alle",
+      "duplicate_title": "Tastatursnarveier",
+      "duplicate_body": "Den samme snarveien brukes av to kommandoer:\n«{first}» og «{second}».\n\nEndre en av de to før du bekrefter."
+    },
+    "cubemap": {
+      "title": "Cubemap for iChannel{index}",
+      "browse": "Bla gjennom…",
+      "face_row": "Side {face}",
+      "choose_face_image": "Velg et bilde for siden",
+      "missing_faces_title": "Cubemap",
+      "missing_faces_body": "Alle 6 sider må fylles ut."
+    },
+    "slider_bounds": {
+      "title": "Grenser for glidebryter",
+      "min": "Min",
+      "max": "Maks",
+      "decimals": "Desimaler",
+      "menu_edit": "Rediger min / maks…"
+    },
+    "color_picker": {
+      "title": "Velg en farge"
+    },
+    "video_error": {
+      "title": "Video",
+      "body": "Kunne ikke spille av «{path}»:\n{error}"
+    },
+    "audio_error": {
+      "title": "Lyd",
+      "body": "Kunne ikke spille av «{path}»:\n{error}"
+    },
+    "webcam_error": {
+      "title": "Webkamera",
+      "no_webcam": "Ingen webkamera oppdaget på denne maskinen.",
+      "camera_prompt": "Kamera for iChannel{index}:"
+    },
+    "ichannel_error": {
+      "title": "iChannel"
+    }
+  },
+  "sliders_panel": {
+    "filter_placeholder": "Filtrer…",
+    "clear_category_keyframes_tooltip": "Fjerner nøkkelbildene til alle glidebrytere i denne kategorien, inkludert de som for øyeblikket er skjult av filteret",
+    "reset_value_tooltip": "Tilbakestill denne verdien",
+    "randomize_value_tooltip": "Randomiser denne verdien",
+    "component_labels_rgb": [
+      "R",
+      "G",
+      "B"
+    ],
+    "component_labels_rgba": [
+      "R",
+      "G",
+      "B",
+      "A"
+    ],
+    "component_labels_xy": [
+      "X",
+      "Y"
+    ],
+    "add_keyframe_menu": "Legg til et nøkkelbilde (t={time}s)",
+    "clear_keyframes_menu": "Fjern nøkkelbilder",
+    "add_keyframe_tooltip": "Legg til et nøkkelbilde ved gjeldende tid (t={time}s)",
+    "keyframe_button_tooltip": "Klikk: legg til/oppdater ved t={time}s — høyreklikk: flere valg",
+    "reset_category": "↺ Tilbakestill kategori",
+    "reset_category_tooltip": "Gjelder alle verdiene i denne kategorien, inkludert de som for øyeblikket er skjult av filteret.",
+    "randomize_category": "🎲 Randomiser kategori",
+    "randomize_category_tooltip": "Gjelder alle verdiene i denne kategorien, inkludert de som for øyeblikket er skjult av filteret.",
+    "clear_category_keyframes": "⏱ Fjern nøkkelbilder",
+    "keyframe_times_tooltip": "{count} nøkkelbilde(r) ved: {times}\n"
+  },
+  "ichannel_panel": {
+    "video_filter": "Videoer (*.mp4 *.mov *.m4v *.avi *.mkv *.webm)",
+    "audio_filter": "Lyd (*.mp3 *.wav *.ogg *.flac)",
+    "image_filter": "Bilder (*.png *.jpg *.jpeg *.bmp)",
+    "source_empty": "Tom",
+    "source_image": "Bilde (fil)",
+    "source_video": "Video (fil)…",
+    "source_audio": "Lyd (fil)…",
+    "source_webcam": "Webkamera",
+    "source_cubemap": "Cubemap (6 bilder)",
+    "source_keyboard": "Tastatur (iKeyboard)",
+    "procedural_checker": "Sjakkbrett",
+    "procedural_white_noise": "Hvit støy",
+    "procedural_value_noise": "Verdistøy",
+    "browse": "Bla gjennom…",
+    "change_cubemap": "Rediger sider…",
+    "change_video": "Bytt video…",
+    "change_audio": "Bytt lyd…",
+    "change_webcam": "Bytt webkamera…",
+    "choose_video": "Velg en video for iChannel{index}",
+    "choose_audio": "Velg en lydfil for iChannel{index}",
+    "choose_image": "Velg et bilde for iChannel{index}",
+    "procedural_suffix": "{label} (prosedural)",
+    "thumb_empty": "tom",
+    "thumb_cube": "KUBE",
+    "default_webcam_tooltip": "standard webkamera"
+  },
+  "footer": {
+    "fps": "FPS: {fps}",
+    "ready": "Klar",
+    "compile_ok": "Kompilert OK",
+    "compile_error": "Feil: {message}",
+    "frame_time_tooltip": "Rendringstid per bilde (rød stolpe = tregere enn ~30 FPS)",
+    "size_tooltip": "Rå størrelse og estimert gzip-størrelse (en tilnærming av størrelsen som faktisk overføres/lagres) før/etter golfing. Markøren (< 2 KB / < 4 KB / < 8 KB) tilsvarer de tradisjonelle demoscene 4k/8k-terskelverdiene, basert på den golfede rå størrelsen — ikke en nettbasert sammenligning mot en ekstern poengsum.",
+    "size_format": "{before} -> {after} byte (-{percent}%) | gzip {before_gz} -> {after_gz}{tier_suffix}",
+    "size_tier": "< {kb} KB"
+  }
+}

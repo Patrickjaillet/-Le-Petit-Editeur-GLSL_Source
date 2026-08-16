@@ -1,0 +1,314 @@
+{
+  "_meta": {
+    "code": "zh",
+    "name": "简体中文",
+    "englishName": "Chinese (Simplified)"
+  },
+  "app": {
+    "window_title": "Petit Editeur GLSL v{version}",
+    "toolbar_name": "主工具栏"
+  },
+  "tabs": {
+    "image": "图像",
+    "buffer_a": "缓冲区 A",
+    "buffer_b": "缓冲区 B",
+    "buffer_c": "缓冲区 C",
+    "buffer_d": "缓冲区 D",
+    "common": "公共"
+  },
+  "menu": {
+    "file": {
+      "title": "文件(&F)",
+      "new": "新建(&N)",
+      "open": "打开(&O)…",
+      "recent_files": "最近的文件(&R)",
+      "recent_files_empty": "(无)",
+      "open_project": "打开项目(&P)…",
+      "import_shadertoy": "从 Shadertoy 导入(&S)…",
+      "save_as": "另存为(&A)…",
+      "save_project": "将项目另存为(&J)…",
+      "export_golfed": "导出压缩代码(&E)…",
+      "export_png": "导出图像 (PNG)(&I)…",
+      "export_video": "导出视频 (MP4)(&V)…",
+      "preferences": "首选项(&P)…",
+      "quit": "退出(&Q)"
+    },
+    "edit": {
+      "title": "编辑(&E)",
+      "undo": "撤销(&U)",
+      "redo": "重做(&R)",
+      "golf": "压缩代码(&G)",
+      "golf_all": "压缩整个项目(&T)",
+      "undo_golf": "撤销压缩(&U)",
+      "shortcuts": "键盘快捷键(&K)…"
+    },
+    "help": {
+      "title": "帮助(&H)",
+      "about": "关于"
+    }
+  },
+  "toolbar": {
+    "compile": "编译",
+    "play": "播放",
+    "pause": "暂停",
+    "play_pause_tooltip": "播放/暂停时间 (iTime) — 也会驱动带关键帧的滑块动画",
+    "reset_time": "重置时间",
+    "reset_time_tooltip": "将 iTime 重置为 0 — 便于从头重新播放关键帧序列",
+    "golf": "压缩 🏌"
+  },
+  "actions": {
+    "file.new": "文件：新建",
+    "file.open": "文件：打开…",
+    "file.open_project": "文件：打开项目…",
+    "file.import_shadertoy": "文件：从 Shadertoy 导入…",
+    "file.save_as": "文件：另存为…",
+    "file.save_project": "文件：将项目另存为…",
+    "file.export_golfed": "文件：导出压缩代码…",
+    "file.export_png": "文件：导出图像 (PNG)…",
+    "file.export_video": "文件：导出视频 (MP4)…",
+    "file.preferences": "文件：首选项…",
+    "file.quit": "文件：退出",
+    "edit.undo": "编辑：撤销",
+    "edit.redo": "编辑：重做",
+    "edit.golf": "编辑：压缩代码",
+    "edit.golf_all": "编辑：压缩整个项目",
+    "edit.undo_golf": "编辑：撤销压缩",
+    "toolbar.compile": "工具栏：编译",
+    "toolbar.play_pause": "工具栏：播放/暂停",
+    "toolbar.reset_time": "工具栏：重置时间",
+    "toolbar.golf": "工具栏：压缩"
+  },
+  "dialogs": {
+    "about": {
+      "title": "关于",
+      "body": "Le Petit Editeur GLSL — 版本 {version}\nCopyright © 2026 Patrick JAILLET — 保留所有权利\n电子邮件：sandefjord.development@proton.me\n网站：https://patrickjaillet.github.io/Le-Petit-Editeur-GLSL"
+    },
+    "golf_options": {
+      "title": "压缩代码",
+      "intro": "压缩操作始终会移除注释、压缩空白并缩短数字字面量。数值（以及自动检测到的滑块）不受以下设置影响，始终保持不变。",
+      "rename": "重命名标识符（变量/函数）",
+      "dead_code": "移除死代码（从未使用的函数/结构体）",
+      "algebra": "简化代数表达式（x*0.、x*1.、x+0. 等）",
+      "algebra_tooltip": "对于涉及成员访问/swizzle 的表达式（例如 p.z*0.），偶尔可能生成无效代码 — 此时压缩会自动回滚（参见“压缩已取消”对话框）。如果经常遇到此问题，请取消勾选此选项。"
+    },
+    "golf_common_confirm": {
+      "title": "压缩代码",
+      "body": "压缩会移除注释，并压缩空白和数字字面量。公共部分永远不会被重命名或裁剪（其声明会被其他单独压缩的通道使用）。\n\n是否继续？"
+    },
+    "golf_cancelled": {
+      "title": "压缩已取消",
+      "body": "压缩后的代码无法编译 — 编辑器内容未作更改。这很可能是压缩工具的一个错误，请反馈报告。\n\n编译错误：\n{error}",
+      "body_all_or_nothing": "[{label}] 压缩后的代码无法编译（包括已压缩的公共部分）— 未作任何更改（全部或不做）。\n\n编译错误：\n{error}"
+    },
+    "undo_golf": {
+      "title": "撤销压缩",
+      "body": "没有可撤销的压缩操作。"
+    },
+    "golf_export_cancelled": {
+      "title": "导出已取消",
+      "body": "压缩后的代码无法编译 — 未导出任何内容。这很可能是压缩工具的一个错误，请反馈报告。\n\n编译错误：\n{error}"
+    },
+    "golf_all_result": {
+      "title": "压缩整个项目",
+      "body": "{pass_count} 个通道 + 公共部分已压缩：{before} -> {after} 字节 (-{percent}%)。"
+    },
+    "unsaved_changes": {
+      "title": "未保存的更改",
+      "body": "当前项目存在未保存的更改。是否继续并放弃这些更改？"
+    },
+    "open_shader": {
+      "title": "打开着色器",
+      "filter": "GLSL (*.frag *.glsl *.txt)"
+    },
+    "open_project": {
+      "title": "打开项目",
+      "filter": "项目 (*.json)"
+    },
+    "open_error": {
+      "title": "打开",
+      "body": "无法加载“{path}”：\n{error}"
+    },
+    "import_shadertoy": {
+      "title": "从 Shadertoy 导入",
+      "prompt": "Shadertoy 链接或 ID（例如 https://www.shadertoy.com/view/XsBXWt，或直接输入 XsBXWt）：",
+      "invalid_id": "无法识别的 Shadertoy 链接或 ID。Shadertoy ID 由 6 个字母数字字符组成（例如 XsBXWt），可单独输入，或包含在 shadertoy.com/view/… 或 shadertoy.com/embed/… 格式的网址中。"
+    },
+    "shadertoy_api_key": {
+      "title": "Shadertoy API 密钥",
+      "prompt": "导入着色器需要 Shadertoy API 密钥（免费获取：shadertoy.com → 您的个人主页 → Apps）。该密钥会被保存以供以后导入使用（可在首选项中修改）："
+    },
+    "import_shadertoy_partial": {
+      "title": "Shadertoy 部分导入",
+      "body": "着色器已导入，但存在一些限制：\n\n- {warnings}"
+    },
+    "save_as": {
+      "title": "另存为",
+      "filter": "GLSL (*.frag *.glsl)"
+    },
+    "save_project": {
+      "title": "保存项目",
+      "filter": "项目 (*.json)"
+    },
+    "export_golfed": {
+      "title": "导出压缩代码",
+      "filter": "GLSL (*.frag *.glsl)"
+    },
+    "export_png": {
+      "title": "导出图像",
+      "nothing_to_export": "目前没有可导出的内容。"
+    },
+    "export_video": {
+      "title": "导出视频 (MP4)",
+      "duration_group": "时长",
+      "duration_seconds": "秒",
+      "duration_frames": "…或直接指定帧数",
+      "fps_group": "帧率 (FPS)",
+      "fps_custom": "自定义",
+      "resolution_group": "输出分辨率",
+      "resolution_width": "宽度",
+      "resolution_height": "高度",
+      "compression_group": "压缩",
+      "compression_advanced": "高级（精确 CRF 值）",
+      "crf_preset_quality": "高质量",
+      "crf_preset_balanced": "均衡",
+      "crf_preset_smallest": "最小体积",
+      "estimated_size": "预计大小：~{size}",
+      "save_dialog_title": "导出视频",
+      "save_dialog_default_name": "shader.mp4",
+      "save_dialog_filter": "视频 (*.mp4)",
+      "ffmpeg_missing": "未找到 ffmpeg ({path})。\n\n请参阅 COMPILATION.md 中的“视频导出”一节：预期的可执行文件为 packaging/bin/ffmpeg.exe。",
+      "export_failed": "导出失败：\n{error}",
+      "export_success": "视频导出成功（{frames} 帧，{width}×{height} @ {fps} fps）：\n{path}"
+    },
+    "export_progress": {
+      "title": "导出视频 (MP4)",
+      "capture_label": "渲染中",
+      "capture_progress": "渲染中：{done}/{total} 帧",
+      "encode_label": "正在编码视频…",
+      "cancel": "取消",
+      "cancelling": "正在取消…"
+    },
+    "preferences": {
+      "title": "首选项",
+      "editor_font_size": "编辑器字体大小",
+      "minimap": "缩略图",
+      "compile_debounce": "编译延迟",
+      "shadertoy_api_key": "Shadertoy API 密钥",
+      "shadertoy_api_key_placeholder": "（留空 = 下次导入时重新询问）",
+      "language": "语言",
+      "language_restart_notice": "语言更改将在下次启动应用程序时生效。"
+    },
+    "shortcuts": {
+      "title": "键盘快捷键",
+      "hint": "双击某个快捷键即可修改。留空该字段即可禁用它。",
+      "column_command": "命令",
+      "column_shortcut": "快捷键",
+      "reset_row": "重置",
+      "reset_all": "全部重置",
+      "duplicate_title": "键盘快捷键",
+      "duplicate_body": "同一快捷键被两个命令使用：\n“{first}”和“{second}”。\n\n请在确认前修改其中一个。"
+    },
+    "cubemap": {
+      "title": "iChannel{index} 的立方体贴图",
+      "browse": "浏览…",
+      "face_row": "面 {face}",
+      "choose_face_image": "选择该面的图像",
+      "missing_faces_title": "立方体贴图",
+      "missing_faces_body": "必须填写全部 6 个面。"
+    },
+    "slider_bounds": {
+      "title": "滑块范围",
+      "min": "最小值",
+      "max": "最大值",
+      "decimals": "小数位数",
+      "menu_edit": "编辑最小值/最大值…"
+    },
+    "color_picker": {
+      "title": "选择颜色"
+    },
+    "video_error": {
+      "title": "视频",
+      "body": "无法播放“{path}”：\n{error}"
+    },
+    "audio_error": {
+      "title": "音频",
+      "body": "无法播放“{path}”：\n{error}"
+    },
+    "webcam_error": {
+      "title": "摄像头",
+      "no_webcam": "在此设备上未检测到摄像头。",
+      "camera_prompt": "iChannel{index} 使用的摄像头："
+    },
+    "ichannel_error": {
+      "title": "iChannel"
+    }
+  },
+  "sliders_panel": {
+    "filter_placeholder": "筛选…",
+    "clear_category_keyframes_tooltip": "清除该类别中所有滑块的关键帧，包括当前被筛选器隐藏的滑块",
+    "reset_value_tooltip": "重置此值",
+    "randomize_value_tooltip": "随机化此值",
+    "component_labels_rgb": [
+      "R",
+      "G",
+      "B"
+    ],
+    "component_labels_rgba": [
+      "R",
+      "G",
+      "B",
+      "A"
+    ],
+    "component_labels_xy": [
+      "X",
+      "Y"
+    ],
+    "add_keyframe_menu": "添加关键帧 (t={time}秒)",
+    "clear_keyframes_menu": "清除关键帧",
+    "add_keyframe_tooltip": "在当前时间添加关键帧 (t={time}秒)",
+    "keyframe_button_tooltip": "点击：在 t={time}秒 处添加/更新 — 右键点击：更多选项",
+    "reset_category": "↺ 重置该类别",
+    "reset_category_tooltip": "适用于此类别中的所有值，包括当前被筛选器隐藏的值。",
+    "randomize_category": "🎲 随机化该类别",
+    "randomize_category_tooltip": "适用于此类别中的所有值，包括当前被筛选器隐藏的值。",
+    "clear_category_keyframes": "⏱ 清除关键帧",
+    "keyframe_times_tooltip": "共 {count} 个关键帧，时间点为：{times}\n"
+  },
+  "ichannel_panel": {
+    "video_filter": "视频 (*.mp4 *.mov *.m4v *.avi *.mkv *.webm)",
+    "audio_filter": "音频 (*.mp3 *.wav *.ogg *.flac)",
+    "image_filter": "图像 (*.png *.jpg *.jpeg *.bmp)",
+    "source_empty": "空",
+    "source_image": "图像（文件）",
+    "source_video": "视频（文件）…",
+    "source_audio": "音频（文件）…",
+    "source_webcam": "摄像头",
+    "source_cubemap": "立方体贴图（6 张图像）",
+    "source_keyboard": "键盘 (iKeyboard)",
+    "procedural_checker": "棋盘格",
+    "procedural_white_noise": "白噪声",
+    "procedural_value_noise": "值噪声",
+    "browse": "浏览…",
+    "change_cubemap": "编辑各面…",
+    "change_video": "更改视频…",
+    "change_audio": "更改音频…",
+    "change_webcam": "更改摄像头…",
+    "choose_video": "为 iChannel{index} 选择视频",
+    "choose_audio": "为 iChannel{index} 选择音频文件",
+    "choose_image": "为 iChannel{index} 选择图像",
+    "procedural_suffix": "{label}（程序化）",
+    "thumb_empty": "空",
+    "thumb_cube": "立方体",
+    "default_webcam_tooltip": "默认摄像头"
+  },
+  "footer": {
+    "fps": "帧率：{fps}",
+    "ready": "就绪",
+    "compile_ok": "编译成功",
+    "compile_error": "错误：{message}",
+    "frame_time_tooltip": "每帧渲染耗时（红色条 = 慢于约 30 FPS）",
+    "size_tooltip": "压缩前后的原始大小和估计的 gzip 大小（对实际传输/存储大小的近似估算）。标记 (< 2 KB / < 4 KB / < 8 KB) 对应传统 demoscene 4k/8k 比赛的门槛，基于压缩后的原始大小 — 并非与外部评分的在线比较。",
+    "size_format": "{before} -> {after} 字节 (-{percent}%) | gzip {before_gz} -> {after_gz}{tier_suffix}",
+    "size_tier": "< {kb} KB"
+  }
+}

@@ -1,0 +1,12 @@
+# Dépendance additionnelle pour figer l'application en exécutable autonome
+# (packaging/build_release.ps1). Séparée de requirements.txt pour ne pas
+# alourdir l'environnement de développement courant avec un outil qui ne
+# sert qu'à la release.
+#
+#   .venv\Scripts\python.exe -m pip install -r packaging\requirements-build.txt
+pyinstaller>=6.22,<7.0
+
+# Uniquement pour regénérer packaging/icon.ico via packaging/make_icon.py —
+# pas nécessaire pour un simple build_release.ps1 (l'icône déjà générée est
+# versionnée).
+pillow>=12.0

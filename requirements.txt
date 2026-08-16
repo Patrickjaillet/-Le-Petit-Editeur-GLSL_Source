@@ -1,0 +1,8 @@
+PySide6>=6.7
+maturin>=1.5,<2.0
+numpy>=1.24
+
+# pyinstaller et pillow ne sont necessaires que pour produire un build de
+# release (cf. packaging/requirements-build.txt) : aucun module du depot
+# ne les importe en dehors de packaging/. Les installer ici alourdirait
+# inutilement le venv de developpement courant pour tout le monde.

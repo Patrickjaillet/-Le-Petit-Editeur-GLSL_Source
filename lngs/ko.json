@@ -1,0 +1,314 @@
+{
+  "_meta": {
+    "code": "ko",
+    "name": "한국어",
+    "englishName": "Korean"
+  },
+  "app": {
+    "window_title": "쁘띠 에디터 GLSL v{version}",
+    "toolbar_name": "메인"
+  },
+  "tabs": {
+    "image": "Image",
+    "buffer_a": "Buffer A",
+    "buffer_b": "Buffer B",
+    "buffer_c": "Buffer C",
+    "buffer_d": "Buffer D",
+    "common": "Common"
+  },
+  "menu": {
+    "file": {
+      "title": "파일(&F)",
+      "new": "새로 만들기(&N)",
+      "open": "열기(&O)…",
+      "recent_files": "최근 파일(&R)",
+      "recent_files_empty": "(없음)",
+      "open_project": "프로젝트 열기(&P)…",
+      "import_shadertoy": "Shadertoy에서 가져오기(&S)…",
+      "save_as": "다른 이름으로 저장(&A)…",
+      "save_project": "프로젝트를 다른 이름으로 저장(&J)…",
+      "export_golfed": "골프 코드 내보내기(&E)…",
+      "export_png": "이미지 내보내기(&I) (PNG)…",
+      "export_video": "동영상 내보내기(&V) (MP4)…",
+      "preferences": "환경설정(&P)…",
+      "quit": "종료(&Q)"
+    },
+    "edit": {
+      "title": "편집(&E)",
+      "undo": "실행 취소(&U)",
+      "redo": "다시 실행(&R)",
+      "golf": "코드 골프(&G)",
+      "golf_all": "프로젝트 전체 골프(&A)",
+      "undo_golf": "골프 취소(&N)",
+      "shortcuts": "키보드 단축키(&K)…"
+    },
+    "help": {
+      "title": "도움말(&H)",
+      "about": "정보"
+    }
+  },
+  "toolbar": {
+    "compile": "컴파일",
+    "play": "재생",
+    "pause": "일시정지",
+    "play_pause_tooltip": "시간(iTime) 재생/일시정지 — 키프레임이 있는 슬라이더도 함께 애니메이션됩니다",
+    "reset_time": "시간 초기화",
+    "reset_time_tooltip": "iTime을 0으로 되돌립니다 — 키프레임 시퀀스를 처음부터 다시 재생할 때 유용합니다",
+    "golf": "골프 🏌"
+  },
+  "actions": {
+    "file.new": "파일: 새로 만들기",
+    "file.open": "파일: 열기…",
+    "file.open_project": "파일: 프로젝트 열기…",
+    "file.import_shadertoy": "파일: Shadertoy에서 가져오기…",
+    "file.save_as": "파일: 다른 이름으로 저장…",
+    "file.save_project": "파일: 프로젝트를 다른 이름으로 저장…",
+    "file.export_golfed": "파일: 골프 코드 내보내기…",
+    "file.export_png": "파일: 이미지 내보내기 (PNG)…",
+    "file.export_video": "파일: 동영상 내보내기 (MP4)…",
+    "file.preferences": "파일: 환경설정…",
+    "file.quit": "파일: 종료",
+    "edit.undo": "편집: 실행 취소",
+    "edit.redo": "편집: 다시 실행",
+    "edit.golf": "편집: 코드 골프",
+    "edit.golf_all": "편집: 프로젝트 전체 골프",
+    "edit.undo_golf": "편집: 골프 취소",
+    "toolbar.compile": "도구 모음: 컴파일",
+    "toolbar.play_pause": "도구 모음: 재생/일시정지",
+    "toolbar.reset_time": "도구 모음: 시간 초기화",
+    "toolbar.golf": "도구 모음: 골프"
+  },
+  "dialogs": {
+    "about": {
+      "title": "정보",
+      "body": "쁘띠 에디터 GLSL — 버전 {version}\nCopyright © 2026 Patrick JAILLET — 모든 권리 보유\n이메일: sandefjord.development@proton.me\n웹사이트: https://patrickjaillet.github.io/Le-Petit-Editeur-GLSL"
+    },
+    "golf_options": {
+      "title": "코드 골프",
+      "intro": "골프는 항상 주석을 제거하고 공백과 숫자 리터럴을 줄입니다. 값(따라서 자동 감지된 슬라이더)은 아래 설정과 관계없이 변하지 않습니다.",
+      "rename": "식별자 이름 바꾸기(변수/함수)",
+      "dead_code": "죽은 코드 제거(사용되지 않는 함수/구조체)",
+      "algebra": "대수 표현식 단순화(x*0., x*1., x+0., ...)",
+      "algebra_tooltip": "멤버 접근/스위즐이 포함된 표현식(예: p.z*0.)에서 이따금 잘못된 코드가 생성될 수 있습니다 — 이 경우 골프가 자동으로 취소됩니다(\"골프 취소됨\" 대화상자 참고). 자주 발생한다면 이 옵션을 해제하세요."
+    },
+    "golf_common_confirm": {
+      "title": "코드 골프",
+      "body": "골프는 주석을 제거하고 공백과 숫자 리터럴을 줄입니다. Common은 이름이 바뀌거나 정리되지 않습니다(그 선언들은 별도로 골프된 다른 패스에서 사용됩니다).\n\n계속하시겠습니까?"
+    },
+    "undo_golf": {
+      "title": "골프 취소",
+      "body": "취소할 골프가 없습니다."
+    },
+    "golf_export_cancelled": {
+      "title": "내보내기 취소됨",
+      "body": "골프된 코드가 더 이상 컴파일되지 않습니다 — 아무것도 내보내지 않았습니다. 골퍼의 버그일 가능성이 높으니 신고해 주세요.\n\n컴파일 오류:\n{error}"
+    },
+    "golf_cancelled": {
+      "title": "골프 취소됨",
+      "body": "골프된 코드가 더 이상 컴파일되지 않습니다 — 편집기는 수정되지 않았습니다. 골퍼의 버그일 가능성이 높으니 신고해 주세요.\n\n컴파일 오류:\n{error}",
+      "body_all_or_nothing": "[{label}] 골프된 코드가 더 이상 컴파일되지 않습니다(골프된 Common 포함) — 아무것도 수정되지 않았습니다(전부 아니면 전무).\n\n컴파일 오류:\n{error}"
+    },
+    "golf_all_result": {
+      "title": "프로젝트 전체 골프",
+      "body": "패스 {pass_count}개 + Common 골프 완료: {before} -> {after} 바이트 (-{percent}%)."
+    },
+    "unsaved_changes": {
+      "title": "저장되지 않은 변경 사항",
+      "body": "현재 프로젝트에 저장되지 않은 변경 사항이 있습니다. 계속 진행하고 잃어버리시겠습니까?"
+    },
+    "open_shader": {
+      "title": "셰이더 열기",
+      "filter": "GLSL (*.frag *.glsl *.txt)"
+    },
+    "open_project": {
+      "title": "프로젝트 열기",
+      "filter": "프로젝트 (*.json)"
+    },
+    "open_error": {
+      "title": "열기",
+      "body": "'{path}'를 불러올 수 없습니다:\n{error}"
+    },
+    "import_shadertoy": {
+      "title": "Shadertoy에서 가져오기",
+      "prompt": "Shadertoy 링크 또는 ID(예: https://www.shadertoy.com/view/XsBXWt, 또는 그냥 XsBXWt):",
+      "invalid_id": "인식할 수 없는 Shadertoy 링크 또는 ID입니다. Shadertoy ID는 영숫자 6자입니다(예: XsBXWt). 단독으로 붙여넣거나 shadertoy.com/view/… 또는 shadertoy.com/embed/… URL 안에 있어야 합니다."
+    },
+    "shadertoy_api_key": {
+      "title": "Shadertoy API 키",
+      "prompt": "셰이더를 가져오려면 Shadertoy API 키가 필요합니다(무료: shadertoy.com → 내 프로필 → Apps). 다음 번 가져오기를 위해 저장됩니다(환경설정에서 수정 가능):"
+    },
+    "import_shadertoy_partial": {
+      "title": "Shadertoy 부분 가져오기",
+      "body": "셰이더를 가져왔지만 일부 제한이 있습니다:\n\n- {warnings}"
+    },
+    "save_as": {
+      "title": "다른 이름으로 저장",
+      "filter": "GLSL (*.frag *.glsl)"
+    },
+    "save_project": {
+      "title": "프로젝트 저장",
+      "filter": "프로젝트 (*.json)"
+    },
+    "export_golfed": {
+      "title": "골프 코드 내보내기",
+      "filter": "GLSL (*.frag *.glsl)"
+    },
+    "export_png": {
+      "title": "이미지 내보내기",
+      "nothing_to_export": "현재 내보낼 이미지가 없습니다."
+    },
+    "export_video": {
+      "title": "동영상 내보내기 (MP4)",
+      "duration_group": "길이",
+      "duration_seconds": "초",
+      "duration_frames": "… 또는 프레임 수로 직접 지정",
+      "fps_group": "초당 프레임 수",
+      "fps_custom": "직접 입력",
+      "resolution_group": "출력 해상도",
+      "resolution_width": "너비",
+      "resolution_height": "높이",
+      "compression_group": "압축",
+      "compression_advanced": "고급(정확한 CRF 값)",
+      "crf_preset_quality": "품질 우선",
+      "crf_preset_balanced": "균형",
+      "crf_preset_smallest": "최소 용량",
+      "estimated_size": "예상 크기: ~{size}",
+      "save_dialog_title": "동영상 내보내기",
+      "save_dialog_default_name": "shader.mp4",
+      "save_dialog_filter": "동영상 (*.mp4)",
+      "ffmpeg_missing": "ffmpeg를 찾을 수 없습니다 ({path}).\n\nCOMPILATION.md의 \"동영상 내보내기\" 섹션을 참고하세요: packaging/bin/ffmpeg.exe 파일이 필요합니다.",
+      "export_failed": "내보내기 실패:\n{error}",
+      "export_success": "동영상을 성공적으로 내보냈습니다({frames} 프레임, {width}×{height} @ {fps} fps):\n{path}"
+    },
+    "export_progress": {
+      "title": "동영상 내보내기 (MP4)",
+      "capture_label": "렌더링",
+      "capture_progress": "렌더링: {done}/{total} 프레임",
+      "encode_label": "동영상 인코딩 중…",
+      "cancel": "취소",
+      "cancelling": "취소 중…"
+    },
+    "preferences": {
+      "title": "환경설정",
+      "editor_font_size": "편집기 글꼴 크기",
+      "minimap": "미니맵",
+      "compile_debounce": "컴파일 디바운스",
+      "shadertoy_api_key": "Shadertoy API 키",
+      "shadertoy_api_key_placeholder": "(비워두면 다음 가져오기 때 다시 물어봅니다)",
+      "language": "언어",
+      "language_restart_notice": "언어 변경 사항은 프로그램을 다시 시작해야 적용됩니다."
+    },
+    "shortcuts": {
+      "title": "키보드 단축키",
+      "hint": "단축키를 더블클릭하면 수정할 수 있습니다. 비워두면 비활성화됩니다.",
+      "column_command": "명령",
+      "column_shortcut": "단축키",
+      "reset_row": "초기화",
+      "reset_all": "모두 초기화",
+      "duplicate_title": "키보드 단축키",
+      "duplicate_body": "같은 단축키가 두 명령에 사용되고 있습니다:\n「{first}」와(과) 「{second}」.\n\n확정하기 전에 둘 중 하나를 수정하세요."
+    },
+    "cubemap": {
+      "title": "iChannel{index}용 큐브맵",
+      "browse": "찾아보기…",
+      "face_row": "면 {face}",
+      "choose_face_image": "면 이미지 선택",
+      "missing_faces_title": "큐브맵",
+      "missing_faces_body": "6개 면 모두를 지정해야 합니다."
+    },
+    "slider_bounds": {
+      "title": "슬라이더 범위",
+      "min": "최소",
+      "max": "최대",
+      "decimals": "소수 자릿수",
+      "menu_edit": "최소/최대 수정…"
+    },
+    "color_picker": {
+      "title": "색상 선택"
+    },
+    "video_error": {
+      "title": "동영상",
+      "body": "「{path}」을(를) 재생할 수 없습니다:\n{error}"
+    },
+    "audio_error": {
+      "title": "오디오",
+      "body": "「{path}」을(를) 재생할 수 없습니다:\n{error}"
+    },
+    "webcam_error": {
+      "title": "웹캠",
+      "no_webcam": "이 기기에서 웹캠을 찾을 수 없습니다.",
+      "camera_prompt": "iChannel{index}에 사용할 카메라:"
+    },
+    "ichannel_error": {
+      "title": "iChannel"
+    }
+  },
+  "sliders_panel": {
+    "filter_placeholder": "필터…",
+    "clear_category_keyframes_tooltip": "이 카테고리에 있는 모든 슬라이더의 키프레임을 지웁니다 (필터로 숨겨진 슬라이더 포함)",
+    "reset_value_tooltip": "이 값 초기화",
+    "randomize_value_tooltip": "이 값 무작위 설정",
+    "component_labels_rgb": [
+      "R",
+      "G",
+      "B"
+    ],
+    "component_labels_rgba": [
+      "R",
+      "G",
+      "B",
+      "A"
+    ],
+    "component_labels_xy": [
+      "X",
+      "Y"
+    ],
+    "add_keyframe_menu": "키프레임 추가 (t={time}초)",
+    "clear_keyframes_menu": "키프레임 지우기",
+    "add_keyframe_tooltip": "현재 시점에 키프레임 추가 (t={time}초)",
+    "keyframe_button_tooltip": "클릭: t={time}초에 추가/갱신 — 우클릭: 추가 옵션",
+    "reset_category": "↺ 카테고리 초기화",
+    "reset_category_tooltip": "필터로 현재 숨겨진 값을 포함하여 이 카테고리의 모든 값에 적용됩니다.",
+    "randomize_category": "🎲 카테고리 무작위 설정",
+    "randomize_category_tooltip": "필터로 현재 숨겨진 값을 포함하여 이 카테고리의 모든 값에 적용됩니다.",
+    "clear_category_keyframes": "⏱ 키프레임 지우기",
+    "keyframe_times_tooltip": "키프레임 {count}개 위치: {times}\n"
+  },
+  "ichannel_panel": {
+    "video_filter": "동영상 (*.mp4 *.mov *.m4v *.avi *.mkv *.webm)",
+    "audio_filter": "오디오 (*.mp3 *.wav *.ogg *.flac)",
+    "image_filter": "이미지 (*.png *.jpg *.jpeg *.bmp)",
+    "source_empty": "비어 있음",
+    "source_image": "이미지(파일)",
+    "source_video": "동영상(파일)…",
+    "source_audio": "오디오(파일)…",
+    "source_webcam": "웹캠",
+    "source_cubemap": "큐브맵(이미지 6장)",
+    "source_keyboard": "키보드 (iKeyboard)",
+    "procedural_checker": "체커보드",
+    "procedural_white_noise": "화이트 노이즈",
+    "procedural_value_noise": "노이즈(값)",
+    "browse": "찾아보기…",
+    "change_cubemap": "면 수정…",
+    "change_video": "동영상 변경…",
+    "change_audio": "오디오 변경…",
+    "change_webcam": "웹캠 변경…",
+    "choose_video": "iChannel{index}에 사용할 동영상 선택",
+    "choose_audio": "iChannel{index}에 사용할 오디오 파일 선택",
+    "choose_image": "iChannel{index}에 사용할 이미지 선택",
+    "procedural_suffix": "{label} (프로시저럴)",
+    "thumb_empty": "비어 있음",
+    "thumb_cube": "CUBE",
+    "default_webcam_tooltip": "기본 웹캠"
+  },
+  "footer": {
+    "fps": "FPS: {fps}",
+    "ready": "준비됨",
+    "compile_ok": "컴파일 성공",
+    "compile_error": "오류: {message}",
+    "frame_time_tooltip": "프레임당 렌더링 시간(빨간 막대 = 약 30 FPS보다 느림)",
+    "size_tooltip": "골프 전/후의 원본 크기와 예상 gzip 크기(실제 전송/저장 크기의 근사치)입니다. 표시 기준(< 2KB / < 4KB / < 8KB)은 골프된 원본 크기를 기준으로 한 데모신 4k/8k 대회의 전통적인 용량 등급이며, 외부 점수와의 온라인 비교는 아닙니다.",
+    "size_format": "{before} -> {after} 바이트 (-{percent}%) | gzip {before_gz} -> {after_gz}{tier_suffix}",
+    "size_tier": "< {kb}KB"
+  }
+}

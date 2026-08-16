@@ -1,0 +1,314 @@
+{
+  "_meta": {
+    "code": "sv",
+    "name": "Svenska",
+    "englishName": "Swedish"
+  },
+  "app": {
+    "window_title": "Petit Editeur GLSL v{version}",
+    "toolbar_name": "Huvud"
+  },
+  "tabs": {
+    "image": "Bild",
+    "buffer_a": "Buffer A",
+    "buffer_b": "Buffer B",
+    "buffer_c": "Buffer C",
+    "buffer_d": "Buffer D",
+    "common": "Gemensam"
+  },
+  "menu": {
+    "file": {
+      "title": "&Arkiv",
+      "new": "&Nytt",
+      "open": "&Öppna…",
+      "recent_files": "&Senaste filer",
+      "recent_files_empty": "(inga)",
+      "open_project": "Öppna ett &projekt…",
+      "import_shadertoy": "Importera från &Shadertoy…",
+      "save_as": "Spara &som…",
+      "save_project": "Spara &projektet som…",
+      "export_golfed": "&Exportera golfad kod…",
+      "export_png": "Exportera en &bild (PNG)…",
+      "export_video": "Exportera en &video (MP4)…",
+      "preferences": "&Inställningar…",
+      "quit": "A&vsluta"
+    },
+    "edit": {
+      "title": "&Redigera",
+      "undo": "&Ångra",
+      "redo": "&Gör om",
+      "golf": "&Golfa koden",
+      "golf_all": "Golfa &hela projektet",
+      "undo_golf": "Ångra &golfen",
+      "shortcuts": "&Kortkommandon…"
+    },
+    "help": {
+      "title": "&Hjälp",
+      "about": "Om"
+    }
+  },
+  "toolbar": {
+    "compile": "Kompilera",
+    "play": "Spela upp",
+    "pause": "Pausa",
+    "play_pause_tooltip": "Spela upp/pausa tiden (iTime) — animerar även reglage med nyckelbilder",
+    "reset_time": "Återställ tiden",
+    "reset_time_tooltip": "Återställer iTime till 0 — praktiskt för att spela upp en nyckelbildssekvens från början igen",
+    "golf": "Golf 🏌"
+  },
+  "actions": {
+    "file.new": "Arkiv: Nytt",
+    "file.open": "Arkiv: Öppna…",
+    "file.open_project": "Arkiv: Öppna ett projekt…",
+    "file.import_shadertoy": "Arkiv: Importera från Shadertoy…",
+    "file.save_as": "Arkiv: Spara som…",
+    "file.save_project": "Arkiv: Spara projektet som…",
+    "file.export_golfed": "Arkiv: Exportera golfad kod…",
+    "file.export_png": "Arkiv: Exportera en bild (PNG)…",
+    "file.export_video": "Arkiv: Exportera en video (MP4)…",
+    "file.preferences": "Arkiv: Inställningar…",
+    "file.quit": "Arkiv: Avsluta",
+    "edit.undo": "Redigera: Ångra",
+    "edit.redo": "Redigera: Gör om",
+    "edit.golf": "Redigera: Golfa koden",
+    "edit.golf_all": "Redigera: Golfa hela projektet",
+    "edit.undo_golf": "Redigera: Ångra golfen",
+    "toolbar.compile": "Verktygsfält: Kompilera",
+    "toolbar.play_pause": "Verktygsfält: Spela upp/Pausa",
+    "toolbar.reset_time": "Verktygsfält: Återställ tiden",
+    "toolbar.golf": "Verktygsfält: Golf"
+  },
+  "dialogs": {
+    "about": {
+      "title": "Om",
+      "body": "Le Petit Editeur GLSL — version {version}\nCopyright © 2026 Patrick JAILLET — Alla rättigheter förbehållna\nE-post: sandefjord.development@proton.me\nWebbplats: https://patrickjaillet.github.io/Le-Petit-Editeur-GLSL"
+    },
+    "golf_options": {
+      "title": "Golfa koden",
+      "intro": "Golfning tar alltid bort kommentarer, komprimerar blanksteg och förkortar numeriska literaler. Värden (och därmed de automatiskt identifierade reglagen) förblir oförändrade oavsett inställningarna nedan.",
+      "rename": "Byt namn på identifierare (variabler/funktioner)",
+      "dead_code": "Ta bort död kod (aldrig använda funktioner/structar)",
+      "algebra": "Förenkla algebraiska uttryck (x*0., x*1., x+0., ...)",
+      "algebra_tooltip": "Kan ibland ge ogiltig kod för uttryck som involverar medlemsåtkomst/swizzle (t.ex. p.z*0.) — i så fall återställs golfen automatiskt (se dialogrutan «Golf avbruten»). Avmarkera detta alternativ om det händer dig ofta."
+    },
+    "golf_common_confirm": {
+      "title": "Golfa koden",
+      "body": "Golfning tar bort kommentarer och komprimerar blanksteg och numeriska literaler. Gemensam byts aldrig namn på eller beskärs (dess deklarationer används av andra pass som golfas separat).\n\nFortsätta?"
+    },
+    "golf_cancelled": {
+      "title": "Golf avbruten",
+      "body": "Den golfade koden går inte längre att kompilera — redigeraren lämnades oförändrad. Det här är troligen ett fel i golfverktyget, vänligen rapportera det.\n\nKompileringsfel:\n{error}",
+      "body_all_or_nothing": "[{label}] den golfade koden går inte längre att kompilera (med Gemensam golfad) — inget ändrades (allt eller inget).\n\nKompileringsfel:\n{error}"
+    },
+    "undo_golf": {
+      "title": "Ångra golfen",
+      "body": "Ingen golf att ångra."
+    },
+    "golf_export_cancelled": {
+      "title": "Export avbruten",
+      "body": "Den golfade koden går inte längre att kompilera — inget exporterades. Det här är troligen ett fel i golfverktyget, vänligen rapportera det.\n\nKompileringsfel:\n{error}"
+    },
+    "golf_all_result": {
+      "title": "Golfa hela projektet",
+      "body": "{pass_count} pass + Gemensam golfad: {before} -> {after} byte (-{percent}%)."
+    },
+    "unsaved_changes": {
+      "title": "Osparade ändringar",
+      "body": "Det aktuella projektet har osparade ändringar. Fortsätta och förlora dem?"
+    },
+    "open_shader": {
+      "title": "Öppna en shader",
+      "filter": "GLSL (*.frag *.glsl *.txt)"
+    },
+    "open_project": {
+      "title": "Öppna ett projekt",
+      "filter": "Projekt (*.json)"
+    },
+    "open_error": {
+      "title": "Öppna",
+      "body": "Kunde inte läsa in «{path}»:\n{error}"
+    },
+    "import_shadertoy": {
+      "title": "Importera från Shadertoy",
+      "prompt": "Shadertoy-länk eller -ID (t.ex. https://www.shadertoy.com/view/XsBXWt, eller bara XsBXWt):",
+      "invalid_id": "Okänd Shadertoy-länk eller -ID. Ett Shadertoy-ID består av 6 alfanumeriska tecken (t.ex. XsBXWt), antingen ensamt eller i en shadertoy.com/view/…- eller shadertoy.com/embed/…-URL."
+    },
+    "shadertoy_api_key": {
+      "title": "Shadertoy API-nyckel",
+      "prompt": "En Shadertoy API-nyckel krävs för att importera en shader (gratis: shadertoy.com → din profil → Apps). Den sparas för framtida importer (kan ändras i Inställningar):"
+    },
+    "import_shadertoy_partial": {
+      "title": "Delvis Shadertoy-import",
+      "body": "Shadern importerades, med vissa begränsningar:\n\n- {warnings}"
+    },
+    "save_as": {
+      "title": "Spara som",
+      "filter": "GLSL (*.frag *.glsl)"
+    },
+    "save_project": {
+      "title": "Spara projektet",
+      "filter": "Projekt (*.json)"
+    },
+    "export_golfed": {
+      "title": "Exportera golfad kod",
+      "filter": "GLSL (*.frag *.glsl)"
+    },
+    "export_png": {
+      "title": "Exportera en bild",
+      "nothing_to_export": "Inget att exportera just nu."
+    },
+    "export_video": {
+      "title": "Exportera en video (MP4)",
+      "duration_group": "Längd",
+      "duration_seconds": "Sekunder",
+      "duration_frames": "… eller direkt i bilder",
+      "fps_group": "Bilder per sekund",
+      "fps_custom": "Anpassad",
+      "resolution_group": "Utgångsupplösning",
+      "resolution_width": "Bredd",
+      "resolution_height": "Höjd",
+      "compression_group": "Komprimering",
+      "compression_advanced": "Avancerat (exakt CRF-värde)",
+      "crf_preset_quality": "Kvalitet",
+      "crf_preset_balanced": "Balanserad",
+      "crf_preset_smallest": "Minsta storlek",
+      "estimated_size": "Uppskattad storlek: ~{size}",
+      "save_dialog_title": "Exportera en video",
+      "save_dialog_default_name": "shader.mp4",
+      "save_dialog_filter": "Video (*.mp4)",
+      "ffmpeg_missing": "ffmpeg hittades inte ({path}).\n\nSe COMPILATION.md, avsnittet «Videoexport»: den förväntade binärfilen är packaging/bin/ffmpeg.exe.",
+      "export_failed": "Export misslyckades:\n{error}",
+      "export_success": "Video exporterad utan problem ({frames} bilder, {width}×{height} @ {fps} fps):\n{path}"
+    },
+    "export_progress": {
+      "title": "Exportera en video (MP4)",
+      "capture_label": "Renderar",
+      "capture_progress": "Renderar: {done}/{total} bilder",
+      "encode_label": "Kodar videon…",
+      "cancel": "Avbryt",
+      "cancelling": "Avbryter…"
+    },
+    "preferences": {
+      "title": "Inställningar",
+      "editor_font_size": "Teckenstorlek i redigeraren",
+      "minimap": "Minikarta",
+      "compile_debounce": "Kompileringsfördröjning",
+      "shadertoy_api_key": "Shadertoy API-nyckel",
+      "shadertoy_api_key_placeholder": "(tom = frågas igen vid nästa import)",
+      "language": "Språk",
+      "language_restart_notice": "Språkändringen träder i kraft nästa gång applikationen startas."
+    },
+    "shortcuts": {
+      "title": "Kortkommandon",
+      "hint": "Dubbelklicka på ett kortkommando för att ändra det. Lämna fältet tomt för att inaktivera det.",
+      "column_command": "Kommando",
+      "column_shortcut": "Kortkommando",
+      "reset_row": "Återställ",
+      "reset_all": "Återställ alla",
+      "duplicate_title": "Kortkommandon",
+      "duplicate_body": "Samma kortkommando används av två kommandon:\n«{first}» och «{second}».\n\nÄndra ett av dem innan du bekräftar."
+    },
+    "cubemap": {
+      "title": "Cubemap för iChannel{index}",
+      "browse": "Bläddra…",
+      "face_row": "Sida {face}",
+      "choose_face_image": "Välj en bild för sidan",
+      "missing_faces_title": "Cubemap",
+      "missing_faces_body": "Alla 6 sidor måste fyllas i."
+    },
+    "slider_bounds": {
+      "title": "Reglagegränser",
+      "min": "Min",
+      "max": "Max",
+      "decimals": "Decimaler",
+      "menu_edit": "Redigera min / max…"
+    },
+    "color_picker": {
+      "title": "Välj en färg"
+    },
+    "video_error": {
+      "title": "Video",
+      "body": "Kunde inte spela upp «{path}»:\n{error}"
+    },
+    "audio_error": {
+      "title": "Ljud",
+      "body": "Kunde inte spela upp «{path}»:\n{error}"
+    },
+    "webcam_error": {
+      "title": "Webbkamera",
+      "no_webcam": "Ingen webbkamera hittades på den här datorn.",
+      "camera_prompt": "Kamera för iChannel{index}:"
+    },
+    "ichannel_error": {
+      "title": "iChannel"
+    }
+  },
+  "sliders_panel": {
+    "filter_placeholder": "Filtrera…",
+    "clear_category_keyframes_tooltip": "Rensar nyckelbilderna för alla reglage i den här kategorin, inklusive de som för närvarande är dolda av filtret",
+    "reset_value_tooltip": "Återställ det här värdet",
+    "randomize_value_tooltip": "Randomisera det här värdet",
+    "component_labels_rgb": [
+      "R",
+      "G",
+      "B"
+    ],
+    "component_labels_rgba": [
+      "R",
+      "G",
+      "B",
+      "A"
+    ],
+    "component_labels_xy": [
+      "X",
+      "Y"
+    ],
+    "add_keyframe_menu": "Lägg till en nyckelbild (t={time}s)",
+    "clear_keyframes_menu": "Rensa nyckelbilder",
+    "add_keyframe_tooltip": "Lägg till en nyckelbild vid aktuell tid (t={time}s)",
+    "keyframe_button_tooltip": "Klick: lägg till/uppdatera vid t={time}s — högerklick: fler alternativ",
+    "reset_category": "↺ Återställ kategori",
+    "reset_category_tooltip": "Gäller alla värden i denna kategori, inklusive de som för närvarande är dolda av filtret.",
+    "randomize_category": "🎲 Randomisera kategori",
+    "randomize_category_tooltip": "Gäller alla värden i denna kategori, inklusive de som för närvarande är dolda av filtret.",
+    "clear_category_keyframes": "⏱ Rensa nyckelbilder",
+    "keyframe_times_tooltip": "{count} nyckelbild(er) vid: {times}\n"
+  },
+  "ichannel_panel": {
+    "video_filter": "Videor (*.mp4 *.mov *.m4v *.avi *.mkv *.webm)",
+    "audio_filter": "Ljud (*.mp3 *.wav *.ogg *.flac)",
+    "image_filter": "Bilder (*.png *.jpg *.jpeg *.bmp)",
+    "source_empty": "Tom",
+    "source_image": "Bild (fil)",
+    "source_video": "Video (fil)…",
+    "source_audio": "Ljud (fil)…",
+    "source_webcam": "Webbkamera",
+    "source_cubemap": "Cubemap (6 bilder)",
+    "source_keyboard": "Tangentbord (iKeyboard)",
+    "procedural_checker": "Schackrutmönster",
+    "procedural_white_noise": "Vitt brus",
+    "procedural_value_noise": "Värdebrus",
+    "browse": "Bläddra…",
+    "change_cubemap": "Redigera sidor…",
+    "change_video": "Byt video…",
+    "change_audio": "Byt ljud…",
+    "change_webcam": "Byt webbkamera…",
+    "choose_video": "Välj en video för iChannel{index}",
+    "choose_audio": "Välj en ljudfil för iChannel{index}",
+    "choose_image": "Välj en bild för iChannel{index}",
+    "procedural_suffix": "{label} (procedurell)",
+    "thumb_empty": "tom",
+    "thumb_cube": "KUB",
+    "default_webcam_tooltip": "standardwebbkamera"
+  },
+  "footer": {
+    "fps": "FPS: {fps}",
+    "ready": "Klar",
+    "compile_ok": "Kompilerad OK",
+    "compile_error": "Fel: {message}",
+    "frame_time_tooltip": "Renderingstid per bildruta (röd stapel = långsammare än ~30 FPS)",
+    "size_tooltip": "Obehandlad storlek och uppskattad gzip-storlek (en approximation av storleken som faktiskt överförs/lagras) före/efter golfning. Markören (< 2 KB / < 4 KB / < 8 KB) motsvarar de traditionella demoscene 4k/8k-tävlingströsklarna, baserat på den golfade obehandlade storleken — inte en nätjämförelse mot ett externt resultat.",
+    "size_format": "{before} -> {after} byte (-{percent}%) | gzip {before_gz} -> {after_gz}{tier_suffix}",
+    "size_tier": "< {kb} KB"
+  }
+}

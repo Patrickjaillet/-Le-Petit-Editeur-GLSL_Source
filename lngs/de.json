@@ -1,0 +1,314 @@
+{
+  "_meta": {
+    "code": "de",
+    "name": "Deutsch",
+    "englishName": "German"
+  },
+  "app": {
+    "window_title": "Petit Editeur GLSL v{version}",
+    "toolbar_name": "Haupt"
+  },
+  "tabs": {
+    "image": "Bild",
+    "buffer_a": "Buffer A",
+    "buffer_b": "Buffer B",
+    "buffer_c": "Buffer C",
+    "buffer_d": "Buffer D",
+    "common": "Gemeinsam"
+  },
+  "menu": {
+    "file": {
+      "title": "&Datei",
+      "new": "&Neu",
+      "open": "Ö&ffnen…",
+      "recent_files": "&Zuletzt verwendet",
+      "recent_files_empty": "(keine)",
+      "open_project": "&Projekt öffnen…",
+      "import_shadertoy": "Von &Shadertoy importieren…",
+      "save_as": "Speichern &unter…",
+      "save_project": "Projekt speichern &unter…",
+      "export_golfed": "Gegolften Code &exportieren…",
+      "export_png": "&Bild exportieren (PNG)…",
+      "export_video": "&Video exportieren (MP4)…",
+      "preferences": "&Einstellungen…",
+      "quit": "&Beenden"
+    },
+    "edit": {
+      "title": "&Bearbeiten",
+      "undo": "&Rückgängig",
+      "redo": "&Wiederherstellen",
+      "golf": "Code &golfen",
+      "golf_all": "Ge&samtes Projekt golfen",
+      "undo_golf": "Golf &rückgängig machen",
+      "shortcuts": "&Tastenkürzel…"
+    },
+    "help": {
+      "title": "&Hilfe",
+      "about": "Über"
+    }
+  },
+  "toolbar": {
+    "compile": "Kompilieren",
+    "play": "Wiedergabe",
+    "pause": "Pause",
+    "play_pause_tooltip": "Zeit (iTime) starten/pausieren — animiert auch Regler mit Keyframes",
+    "reset_time": "Zeit zurücksetzen",
+    "reset_time_tooltip": "Setzt iTime auf 0 zurück — nützlich, um eine Keyframe-Sequenz von vorn abzuspielen",
+    "golf": "Golf 🏌"
+  },
+  "actions": {
+    "file.new": "Datei: Neu",
+    "file.open": "Datei: Öffnen…",
+    "file.open_project": "Datei: Projekt öffnen…",
+    "file.import_shadertoy": "Datei: Von Shadertoy importieren…",
+    "file.save_as": "Datei: Speichern unter…",
+    "file.save_project": "Datei: Projekt speichern unter…",
+    "file.export_golfed": "Datei: Gegolften Code exportieren…",
+    "file.export_png": "Datei: Bild exportieren (PNG)…",
+    "file.export_video": "Datei: Video exportieren (MP4)…",
+    "file.preferences": "Datei: Einstellungen…",
+    "file.quit": "Datei: Beenden",
+    "edit.undo": "Bearbeiten: Rückgängig",
+    "edit.redo": "Bearbeiten: Wiederherstellen",
+    "edit.golf": "Bearbeiten: Code golfen",
+    "edit.golf_all": "Bearbeiten: Gesamtes Projekt golfen",
+    "edit.undo_golf": "Bearbeiten: Golf rückgängig machen",
+    "toolbar.compile": "Symbolleiste: Kompilieren",
+    "toolbar.play_pause": "Symbolleiste: Wiedergabe/Pause",
+    "toolbar.reset_time": "Symbolleiste: Zeit zurücksetzen",
+    "toolbar.golf": "Symbolleiste: Golf"
+  },
+  "dialogs": {
+    "about": {
+      "title": "Über",
+      "body": "Le Petit Editeur GLSL — Version {version}\nCopyright © 2026 Patrick JAILLET — Alle Rechte vorbehalten\nE-Mail: sandefjord.development@proton.me\nWebsite: https://patrickjaillet.github.io/Le-Petit-Editeur-GLSL"
+    },
+    "golf_options": {
+      "title": "Code golfen",
+      "intro": "Golfen entfernt immer Kommentare, reduziert Leerraum und kürzt numerische Literale. Werte (und damit die automatisch erkannten Regler) bleiben unabhängig von den folgenden Einstellungen unverändert.",
+      "rename": "Bezeichner umbenennen (Variablen/Funktionen)",
+      "dead_code": "Toten Code entfernen (nie verwendete Funktionen/Structs)",
+      "algebra": "Algebraische Ausdrücke vereinfachen (x*0., x*1., x+0., ...)",
+      "algebra_tooltip": "Kann gelegentlich ungültigen Code bei Ausdrücken mit Member-Zugriff/Swizzle erzeugen (z. B. p.z*0.) — in diesem Fall wird der Golf automatisch zurückgesetzt (siehe Dialog „Golf abgebrochen“). Deaktivieren Sie diese Option, wenn das häufig vorkommt."
+    },
+    "golf_common_confirm": {
+      "title": "Code golfen",
+      "body": "Golfen entfernt Kommentare und reduziert Leerraum sowie numerische Literale. Gemeinsam wird nie umbenannt oder bereinigt (seine Deklarationen werden von anderen, separat gegolften Passes verwendet).\n\nFortfahren?"
+    },
+    "golf_cancelled": {
+      "title": "Golf abgebrochen",
+      "body": "Der gegolfte Code lässt sich nicht mehr kompilieren — der Editor wurde unverändert belassen. Dies ist wahrscheinlich ein Fehler im Golfer, bitte melden Sie ihn.\n\nKompilierungsfehler:\n{error}",
+      "body_all_or_nothing": "[{label}] der gegolfte Code lässt sich nicht mehr kompilieren (mit gegolftem Gemeinsam) — nichts wurde geändert (alles oder nichts).\n\nKompilierungsfehler:\n{error}"
+    },
+    "undo_golf": {
+      "title": "Golf rückgängig machen",
+      "body": "Kein Golf zum Rückgängigmachen."
+    },
+    "golf_export_cancelled": {
+      "title": "Export abgebrochen",
+      "body": "Der gegolfte Code lässt sich nicht mehr kompilieren — es wurde nichts exportiert. Dies ist wahrscheinlich ein Fehler im Golfer, bitte melden Sie ihn.\n\nKompilierungsfehler:\n{error}"
+    },
+    "golf_all_result": {
+      "title": "Gesamtes Projekt golfen",
+      "body": "{pass_count} Pass(es) + Gemeinsam gegolft: {before} -> {after} Bytes (-{percent}%)."
+    },
+    "unsaved_changes": {
+      "title": "Nicht gespeicherte Änderungen",
+      "body": "Das aktuelle Projekt enthält nicht gespeicherte Änderungen. Trotzdem fortfahren und sie verwerfen?"
+    },
+    "open_shader": {
+      "title": "Shader öffnen",
+      "filter": "GLSL (*.frag *.glsl *.txt)"
+    },
+    "open_project": {
+      "title": "Projekt öffnen",
+      "filter": "Projekt (*.json)"
+    },
+    "open_error": {
+      "title": "Öffnen",
+      "body": "„{path}“ konnte nicht geladen werden:\n{error}"
+    },
+    "import_shadertoy": {
+      "title": "Von Shadertoy importieren",
+      "prompt": "Shadertoy-Link oder -ID (z. B. https://www.shadertoy.com/view/XsBXWt, oder nur XsBXWt):",
+      "invalid_id": "Unbekannter Shadertoy-Link oder -ID. Eine Shadertoy-ID besteht aus 6 alphanumerischen Zeichen (z. B. XsBXWt), allein oder innerhalb einer shadertoy.com/view/…- oder shadertoy.com/embed/…-URL."
+    },
+    "shadertoy_api_key": {
+      "title": "Shadertoy-API-Schlüssel",
+      "prompt": "Zum Importieren eines Shaders ist ein Shadertoy-API-Schlüssel erforderlich (kostenlos: shadertoy.com → Ihr Profil → Apps). Er wird für künftige Importe gespeichert (in den Einstellungen änderbar):"
+    },
+    "import_shadertoy_partial": {
+      "title": "Teilweiser Shadertoy-Import",
+      "body": "Der Shader wurde mit einigen Einschränkungen importiert:\n\n- {warnings}"
+    },
+    "save_as": {
+      "title": "Speichern unter",
+      "filter": "GLSL (*.frag *.glsl)"
+    },
+    "save_project": {
+      "title": "Projekt speichern",
+      "filter": "Projekt (*.json)"
+    },
+    "export_golfed": {
+      "title": "Gegolften Code exportieren",
+      "filter": "GLSL (*.frag *.glsl)"
+    },
+    "export_png": {
+      "title": "Bild exportieren",
+      "nothing_to_export": "Momentan nichts zu exportieren."
+    },
+    "export_video": {
+      "title": "Video exportieren (MP4)",
+      "duration_group": "Dauer",
+      "duration_seconds": "Sekunden",
+      "duration_frames": "… oder direkt in Frames",
+      "fps_group": "Bilder pro Sekunde",
+      "fps_custom": "Benutzerdefiniert",
+      "resolution_group": "Ausgabeauflösung",
+      "resolution_width": "Breite",
+      "resolution_height": "Höhe",
+      "compression_group": "Kompression",
+      "compression_advanced": "Erweitert (genauer CRF-Wert)",
+      "crf_preset_quality": "Qualität",
+      "crf_preset_balanced": "Ausgewogen",
+      "crf_preset_smallest": "Kleinste Größe",
+      "estimated_size": "Geschätzte Größe: ~{size}",
+      "save_dialog_title": "Video exportieren",
+      "save_dialog_default_name": "shader.mp4",
+      "save_dialog_filter": "Video (*.mp4)",
+      "ffmpeg_missing": "ffmpeg nicht gefunden ({path}).\n\nSiehe COMPILATION.md, Abschnitt „Videoexport“: die erwartete Binärdatei ist packaging/bin/ffmpeg.exe.",
+      "export_failed": "Export fehlgeschlagen:\n{error}",
+      "export_success": "Video erfolgreich exportiert ({frames} Frames, {width}×{height} @ {fps} fps):\n{path}"
+    },
+    "export_progress": {
+      "title": "Video exportieren (MP4)",
+      "capture_label": "Rendern",
+      "capture_progress": "Rendern: {done}/{total} Frames",
+      "encode_label": "Video wird codiert…",
+      "cancel": "Abbrechen",
+      "cancelling": "Wird abgebrochen…"
+    },
+    "preferences": {
+      "title": "Einstellungen",
+      "editor_font_size": "Schriftgröße des Editors",
+      "minimap": "Minimap",
+      "compile_debounce": "Kompilierungsverzögerung",
+      "shadertoy_api_key": "Shadertoy-API-Schlüssel",
+      "shadertoy_api_key_placeholder": "(leer = beim nächsten Import erneut abgefragt)",
+      "language": "Sprache",
+      "language_restart_notice": "Der Sprachwechsel wird beim nächsten Start der Anwendung wirksam."
+    },
+    "shortcuts": {
+      "title": "Tastenkürzel",
+      "hint": "Doppelklicken Sie auf ein Tastenkürzel, um es zu ändern. Lassen Sie das Feld leer, um es zu deaktivieren.",
+      "column_command": "Befehl",
+      "column_shortcut": "Tastenkürzel",
+      "reset_row": "Zurücksetzen",
+      "reset_all": "Alle zurücksetzen",
+      "duplicate_title": "Tastenkürzel",
+      "duplicate_body": "Dasselbe Tastenkürzel wird von zwei Befehlen verwendet:\n„{first}“ und „{second}“.\n\nÄndern Sie eines der beiden, bevor Sie bestätigen."
+    },
+    "cubemap": {
+      "title": "Cubemap für iChannel{index}",
+      "browse": "Durchsuchen…",
+      "face_row": "Seite {face}",
+      "choose_face_image": "Bild für Seite auswählen",
+      "missing_faces_title": "Cubemap",
+      "missing_faces_body": "Alle 6 Seiten müssen ausgefüllt sein."
+    },
+    "slider_bounds": {
+      "title": "Reglerbereich",
+      "min": "Min",
+      "max": "Max",
+      "decimals": "Dezimalstellen",
+      "menu_edit": "Min / Max bearbeiten…"
+    },
+    "color_picker": {
+      "title": "Farbe auswählen"
+    },
+    "video_error": {
+      "title": "Video",
+      "body": "„{path}“ konnte nicht abgespielt werden:\n{error}"
+    },
+    "audio_error": {
+      "title": "Audio",
+      "body": "„{path}“ konnte nicht abgespielt werden:\n{error}"
+    },
+    "webcam_error": {
+      "title": "Webcam",
+      "no_webcam": "Keine Webcam auf diesem Gerät erkannt.",
+      "camera_prompt": "Kamera für iChannel{index}:"
+    },
+    "ichannel_error": {
+      "title": "iChannel"
+    }
+  },
+  "sliders_panel": {
+    "filter_placeholder": "Filtern…",
+    "clear_category_keyframes_tooltip": "Löscht die Keyframes aller Regler dieser Kategorie, auch die, die aktuell durch den Filter ausgeblendet sind",
+    "reset_value_tooltip": "Diesen Wert zurücksetzen",
+    "randomize_value_tooltip": "Diesen Wert zufällig ändern",
+    "component_labels_rgb": [
+      "R",
+      "G",
+      "B"
+    ],
+    "component_labels_rgba": [
+      "R",
+      "G",
+      "B",
+      "A"
+    ],
+    "component_labels_xy": [
+      "X",
+      "Y"
+    ],
+    "add_keyframe_menu": "Keyframe hinzufügen (t={time}s)",
+    "clear_keyframes_menu": "Keyframes löschen",
+    "add_keyframe_tooltip": "Keyframe zur aktuellen Zeit hinzufügen (t={time}s)",
+    "keyframe_button_tooltip": "Klick: hinzufügen/aktualisieren bei t={time}s — Rechtsklick: weitere Optionen",
+    "reset_category": "↺ Kategorie zurücksetzen",
+    "reset_category_tooltip": "Gilt für alle Werte dieser Kategorie, auch für die, die aktuell durch den Filter ausgeblendet sind.",
+    "randomize_category": "🎲 Kategorie zufällig ändern",
+    "randomize_category_tooltip": "Gilt für alle Werte dieser Kategorie, auch für die, die aktuell durch den Filter ausgeblendet sind.",
+    "clear_category_keyframes": "⏱ Keyframes löschen",
+    "keyframe_times_tooltip": "{count} Keyframe(s) bei: {times}\n"
+  },
+  "ichannel_panel": {
+    "video_filter": "Videos (*.mp4 *.mov *.m4v *.avi *.mkv *.webm)",
+    "audio_filter": "Audio (*.mp3 *.wav *.ogg *.flac)",
+    "image_filter": "Bilder (*.png *.jpg *.jpeg *.bmp)",
+    "source_empty": "Leer",
+    "source_image": "Bild (Datei)",
+    "source_video": "Video (Datei)…",
+    "source_audio": "Audio (Datei)…",
+    "source_webcam": "Webcam",
+    "source_cubemap": "Cubemap (6 Bilder)",
+    "source_keyboard": "Tastatur (iKeyboard)",
+    "procedural_checker": "Schachbrett",
+    "procedural_white_noise": "Weißes Rauschen",
+    "procedural_value_noise": "Value Noise",
+    "browse": "Durchsuchen…",
+    "change_cubemap": "Seiten bearbeiten…",
+    "change_video": "Video ändern…",
+    "change_audio": "Audio ändern…",
+    "change_webcam": "Webcam ändern…",
+    "choose_video": "Video für iChannel{index} auswählen",
+    "choose_audio": "Audio für iChannel{index} auswählen",
+    "choose_image": "Bild für iChannel{index} auswählen",
+    "procedural_suffix": "{label} (prozedural)",
+    "thumb_empty": "leer",
+    "thumb_cube": "CUBE",
+    "default_webcam_tooltip": "Standard-Webcam"
+  },
+  "footer": {
+    "fps": "FPS: {fps}",
+    "ready": "Bereit",
+    "compile_ok": "Erfolgreich kompiliert",
+    "compile_error": "Fehler: {message}",
+    "frame_time_tooltip": "Renderzeit pro Frame (rote Leiste = langsamer als ~30 FPS)",
+    "size_tooltip": "Rohgröße und geschätzte gzip-Größe (eine Annäherung an die tatsächlich übertragene/gespeicherte Größe) vor/nach dem Golfen. Die Markierung (< 2 KB / < 4 KB / < 8 KB) entspricht den traditionellen Demoscene-4k/8k-Compo-Schwellenwerten, bezogen auf die gegolfte Rohgröße — kein Online-Vergleich mit einem externen Score.",
+    "size_format": "{before} -> {after} Bytes (-{percent}%) | gzip {before_gz} -> {after_gz}{tier_suffix}",
+    "size_tier": "< {kb} KB"
+  }
+}

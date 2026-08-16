@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body, #editor { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+  body { background: #1e1e1e; }
+</style>
+</head>
+<body>
+<div id="editor"></div>
+
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script src="../monaco/vs/loader.js"></script>
+<script>
+  var editor = null;
+  var bridge = null;
+  var suppressChangeSignal = false;
+
+  require.config({ paths: { vs: "../monaco/vs" } });
+
+  require(["vs/editor/editor.main"], function () {
+    // GLSL isn't a Monaco built-in language; register a lightweight
+    // definition reusing C-like tokenization so keywords/comments/numbers
+    // still get sensible highlighting.
+    monaco.languages.register({ id: "glsl" });
+    monaco.languages.setMonarchTokensProvider("glsl", {
+      keywords: [
+        "void","float","int","bool","uint","vec2","vec3","vec4","ivec2","ivec3","ivec4",
+        "bvec2","bvec3","bvec4","mat2","mat3","mat4","sampler2D","samplerCube","struct",
+        "uniform","varying","attribute","const","in","out","inout","if","else","for","while",
+        "do","break","continue","return","discard","true","false","precision","highp",
+        "mediump","lowp","layout","binding","location","set"
+      ],
+      tokenizer: {
+        root: [
+          [/\/\/.*$/, "comment"],
+          [/\/\*/, "comment", "@comment"],
+          [/@?[a-zA-Z_]\w*/, { cases: { "@keywords": "keyword", "@default": "identifier" } }],
+          [/\d+\.\d+([eE][\-+]?\d+)?/, "number.float"],
+          [/\d+/, "number"],
+          [/[{}()\[\]]/, "@brackets"],
+          [/[<>=!%&+\-*/|~^]+/, "operator"],
+          [/#.*$/, "keyword.directive"]
+        ],
+        comment: [
+          [/[^/*]+/, "comment"],
+          [/\*\//, "comment", "@pop"],
+          [/[/*]/, "comment"]
+        ]
+      }
+    });
+
+    editor = monaco.editor.create(document.getElementById("editor"), {
+      value: "",
+      language: "glsl",
+      theme: "vs-dark",
+      automaticLayout: true,
+      minimap: { enabled: false },
+      fontSize: 13,
+    });
+
+    editor.onDidChangeModelContent(function () {
+      if (suppressChangeSignal) return;
+      if (bridge) bridge.onContentChanged(editor.getValue());
+    });
+
+    new QWebChannel(qt.webChannelTransport, function (channel) {
+      bridge = channel.objects.bridge;
+    });
+  });
+
+  // --- API called from Python (via page.runJavaScript) ---
+
+  function setEditorValue(text) {
+    if (!editor) return;
+    suppressChangeSignal = true;
+    editor.setValue(text);
+    suppressChangeSignal = false;
+  }
+
+  // Replaces the content via an editable operation (keeps undo stack, so
+  // Ctrl+Z after "Golf" restores the previous code) instead of resetting
+  // the model outright.
+  function replaceEditorValue(text) {
+    if (!editor) return;
+    var model = editor.getModel();
+    var fullRange = model.getFullModelRange();
+    editor.executeEdits("golf", [{ range: fullRange, text: text, forceMoveMarkers: true }]);
+  }
+
+  function getEditorValue() {
+    return editor ? editor.getValue() : "";
+  }
+
+  // Rewrites a single character range in place (used by sliders: the
+  // model's own getPositionAt/getOffsetAt does the offset<->line/column
+  // conversion for us). An editable operation, so it merges into the undo
+  // stack like a normal edit.
+  //
+  // `startOffset`/`endOffset` are Unicode *code-point* indices (that's
+  // how `literals.rs` indexes its `Vec<char>`, and how Python's `str`
+  // indexing works too — consistent on that side) but
+  // `model.getPositionAt` expects UTF-16 *code-unit* indices (the DOM/JS
+  // string convention Monaco follows). The two only coincide as long as
+  // every character before the edited literal stays in the Basic
+  // Multilingual Plane; a single astral character earlier in the text
+  // (some emoji, some rare CJK extension) would silently desync every
+  // offset after it. See m4 in AUDIT.md — converted here via the model's
+  // own current text, so this is correct regardless of which copy of the
+  // source the Python side used to compute the code-point offsets.
+  function codePointOffsetToUtf16Offset(text, codePointOffset) {
+    var utf16 = 0;
+    var codePoints = 0;
+    while (codePoints < codePointOffset && utf16 < text.length) {
+      var code = text.charCodeAt(utf16);
+      // A high surrogate immediately followed by a low surrogate is one
+      // code point spanning 2 UTF-16 units; anything else (including an
+      // unpaired surrogate, which shouldn't occur in well-formed text)
+      // is 1 unit.
+      if (code >= 0xd800 && code <= 0xdbff && utf16 + 1 < text.length) {
+        var next = text.charCodeAt(utf16 + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          utf16 += 2;
+          codePoints += 1;
+          continue;
+        }
+      }
+      utf16 += 1;
+      codePoints += 1;
+    }
+    return utf16;
+  }
+
+  function replaceRange(startOffset, endOffset, text) {
+    if (!editor) return;
+    var model = editor.getModel();
+    var fullText = model.getValue();
+    var startUtf16 = codePointOffsetToUtf16Offset(fullText, startOffset);
+    var endUtf16 = codePointOffsetToUtf16Offset(fullText, endOffset);
+    var startPos = model.getPositionAt(startUtf16);
+    var endPos = model.getPositionAt(endUtf16);
+    var range = new monaco.Range(
+      startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column
+    );
+    editor.executeEdits("slider", [{ range: range, text: text, forceMoveMarkers: true }]);
+  }
+
+  function setErrorMarker(line, message) {
+    if (!editor) return;
+    var model = editor.getModel();
+    if (!message) {
+      monaco.editor.setModelMarkers(model, "glsl-compile", []);
+      return;
+    }
+    var lineNum = Math.max(1, line || 1);
+    monaco.editor.setModelMarkers(model, "glsl-compile", [{
+      startLineNumber: lineNum,
+      startColumn: 1,
+      endLineNumber: lineNum,
+      endColumn: model.getLineMaxColumn(lineNum),
+      message: message,
+      severity: monaco.MarkerSeverity.Error,
+    }]);
+  }
+</script>
+</body>
+</html>
