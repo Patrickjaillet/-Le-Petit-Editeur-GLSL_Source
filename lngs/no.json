@@ -85,11 +85,24 @@
     },
     "golf_options": {
       "title": "Golf koden",
-      "intro": "Golfing fjerner alltid kommentarer, komprimerer mellomrom og forkorter numeriske literaler. Verdier (og dermed de automatisk gjenkjente glidebryterne) forblir uendret uansett innstillingene nedenfor.",
+      "intro": "Noen transformasjoner kan slås av eller på nedenfor; de andre brukes alltid og er listet opp som informasjon.",
       "rename": "Gi nytt navn til identifikatorer (variabler/funksjoner)",
       "dead_code": "Fjern død kode (funksjoner/strukturer som aldri brukes)",
       "algebra": "Forenkle algebraiske uttrykk (x*0., x*1., x+0., ...)",
-      "algebra_tooltip": "Kan av og til produsere ugyldig kode i uttrykk som involverer medlemstilgang/swizzle (f.eks. p.z*0.) — i så fall blir golfen automatisk tilbakestilt (se dialogboksen «Golf avbrutt»). Fjern haken her hvis dette skjer ofte for deg."
+      "algebra_tooltip": "Kan av og til produsere ugyldig kode i uttrykk som involverer medlemstilgang/swizzle (f.eks. p.z*0.) — i så fall blir golfen automatisk tilbakestilt (se dialogboksen «Golf avbrutt»). Fjern haken her hvis dette skjer ofte for deg.",
+      "section_optional_title": "Valgfrie transformasjoner",
+      "section_optional_desc": "Kan slås av og på uavhengig av hverandre, avhengig av behovet ditt for lesbarhet eller kompatibilitet.",
+      "rename_desc": "Erstatter hver variabel og funksjon med et navn på én eller to bokstaver. Den mest aggressive transformasjonen: den golfede koden blir uleselig.",
+      "dead_code_desc": "Fjerner funksjoner og structer som aldri kalles, og setter direkte inn dem som kalles nøyaktig én gang.",
+      "algebra_desc": "Forenkler trivielle uttrykk (x*0., x*1., x+0., pow(x,2.), dobbel negasjon, ...).",
+      "section_always_title": "Brukes alltid",
+      "section_always_desc": "Disse transformasjonene endrer aldri shaderens oppførsel: de kjøres alltid, uten avkrysningsboks for å skru dem av.",
+      "always_cleanup_title": "Grunnleggende opprydding",
+      "always_cleanup_desc": "Kommentarer fjernes, overflødige mellomrom og redundante semikolon strykes, numeriske literaler forkortes (0.50 → .5).",
+      "always_structure_title": "Syntaktiske forenklinger",
+      "always_structure_desc": "Implisitt «in»-kvalifikator fjernes, for-løkker komprimeres, påfølgende deklarasjoner slås sammen, klammer og vektorkonstruktører forenkles, if/else skrives om til ternær operator der det er mulig.",
+      "always_macros_title": "Makroutdrag",
+      "always_macros_desc": "Gjentatte deluttrykk faktoriseres til #define-makroer, men bare når det faktisk gjør filen mindre."
     },
     "golf_common_confirm": {
       "title": "Golf koden",

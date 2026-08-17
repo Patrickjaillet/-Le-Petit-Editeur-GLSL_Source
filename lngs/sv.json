@@ -85,11 +85,24 @@
     },
     "golf_options": {
       "title": "Golfa koden",
-      "intro": "Golfning tar alltid bort kommentarer, komprimerar blanksteg och förkortar numeriska literaler. Värden (och därmed de automatiskt identifierade reglagen) förblir oförändrade oavsett inställningarna nedan.",
+      "intro": "Vissa transformationer kan slås på eller av nedan; de andra tillämpas alltid och listas endast som information.",
       "rename": "Byt namn på identifierare (variabler/funktioner)",
       "dead_code": "Ta bort död kod (aldrig använda funktioner/structar)",
       "algebra": "Förenkla algebraiska uttryck (x*0., x*1., x+0., ...)",
-      "algebra_tooltip": "Kan ibland ge ogiltig kod för uttryck som involverar medlemsåtkomst/swizzle (t.ex. p.z*0.) — i så fall återställs golfen automatiskt (se dialogrutan «Golf avbruten»). Avmarkera detta alternativ om det händer dig ofta."
+      "algebra_tooltip": "Kan ibland ge ogiltig kod för uttryck som involverar medlemsåtkomst/swizzle (t.ex. p.z*0.) — i så fall återställs golfen automatiskt (se dialogrutan «Golf avbruten»). Avmarkera detta alternativ om det händer dig ofta.",
+      "section_optional_title": "Valfria transformationer",
+      "section_optional_desc": "Kan aktiveras oberoende av varandra, beroende på dina behov av läsbarhet eller kompatibilitet.",
+      "rename_desc": "Ersätter varje variabel och funktion med ett en- eller tvåbokstavsnamn. Den mest aggressiva transformationen: den golfade koden blir oläsbar.",
+      "dead_code_desc": "Tar bort funktioner och structar som aldrig anropas, och infogar direkt de som anropas exakt en gång.",
+      "algebra_desc": "Förenklar triviala uttryck (x*0., x*1., x+0., pow(x,2.), dubbel negation, ...).",
+      "section_always_title": "Tillämpas alltid",
+      "section_always_desc": "Dessa transformationer ändrar aldrig shaderns beteende: de körs alltid, utan kryssruta för att stänga av dem.",
+      "always_cleanup_title": "Grundläggande städning",
+      "always_cleanup_desc": "Kommentarer tas bort, överflödiga blanksteg och redundanta semikolon rensas, numeriska literaler förkortas (0.50 → .5).",
+      "always_structure_title": "Syntaktiska förenklingar",
+      "always_structure_desc": "Implicit \"in\"-kvalificerare tas bort, for-loopar komprimeras, på varandra följande deklarationer slås ihop, klamrar och vektorkonstruktorer förenklas, if/else skrivs om till ternär operator när det går.",
+      "always_macros_title": "Makroextraktion",
+      "always_macros_desc": "Upprepade deluttryck faktoriseras till #define-makron, men bara när det faktiskt minskar filstorleken."
     },
     "golf_common_confirm": {
       "title": "Golfa koden",

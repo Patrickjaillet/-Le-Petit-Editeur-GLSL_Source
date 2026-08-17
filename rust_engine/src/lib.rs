@@ -1,3 +1,4 @@
+mod dialect;
 mod golf;
 mod literals;
 mod renderer;
@@ -311,13 +312,55 @@ fn detect_all_sliders(
     )
 }
 
+/// Détecte le dialecte (Shadertoy `mainImage` vs GLSL standalone `main`)
+/// d'un shader collé/tapé par l'utilisateur, pour affichage dans le footer
+/// et adaptation future du pipeline de compilation (voir roadmap1.md).
+///
+/// `previous_dialect` est l'id du dialecte actuellement affiché pour cet
+/// onglet (`"shadertoy"` / `"glsl"`), ou une chaîne vide s'il n'y en a pas
+/// encore (tout premier appel pour cet onglet) — utilisé uniquement quand
+/// le texte actuel ne contient aucun signal exploitable, pour ne pas faire
+/// retomber l'indicateur sur une valeur par défaut arbitraire à chaque
+/// frappe (ex. onglet Common pur de helpers).
+///
+/// Retourne `(dialect_id, signal_i18n_key)` : `dialect_id` est
+/// `"shadertoy"` ou `"glsl"` (voir `DIALECT_SHADERTOY`/`DIALECT_GLSL`
+/// exportés ci-dessous) ; `signal_i18n_key` est la clé i18n
+/// (`footer.dialect_signal_*`) expliquant sur quel signal la détection
+/// s'est basée, pour le tooltip du footer.
+#[pyfunction]
+fn detect_dialect(source: &str, previous_dialect: &str) -> (String, String) {
+    let previous = dialect::ShaderDialect::from_id(previous_dialect);
+    let detection = dialect::detect_dialect(source, previous);
+    (detection.dialect.id().to_string(), detection.signal.i18n_key().to_string())
+}
+
 /// Returns how many lines of the generated Shadertoy harness (plus the
 /// `Common` source, if any) precede a pass's own code, so compile-error
 /// line numbers (which refer to the fully wrapped source) can be
 /// translated back to the line the user sees in that pass's editor tab.
+/// Chemin Shadertoy uniquement — voir `fragment_header_line_count_for_dialect`
+/// pour l'équivalent qui fonctionne aussi en mode GLSL standalone.
 #[pyfunction]
 fn fragment_header_line_count(common: &str, source: &str) -> usize {
     shader::header_line_count(common, source)
+}
+
+/// Équivalent de `fragment_header_line_count` qui tient compte du
+/// dialecte (roadmap1.md, section "Compilation réellement double-dialecte")
+/// : un pass en mode GLSL standalone n'a pas le même nombre de lignes de
+/// harness qu'un pass Shadertoy (bloc Globals/iChannel* injectés
+/// seulement si référencés, voir `shader::build_fragment_source_standalone`),
+/// donc le mapping ligne d'erreur → éditeur a besoin de savoir lequel des
+/// deux a effectivement été compilé pour ce texte. `dialect_id` est
+/// `"shadertoy"` ou `"glsl"` (typiquement la valeur déjà renvoyée par
+/// `detect_dialect` pour ce même `source`, que l'appelant Python garde
+/// déjà sous la main — voir `main_window.py::_pass_dialects`) ; toute
+/// autre valeur retombe silencieusement sur le chemin Shadertoy.
+#[pyfunction]
+fn fragment_header_line_count_for_dialect(common: &str, source: &str, dialect_id: &str) -> usize {
+    let dialect = dialect::ShaderDialect::from_id(dialect_id).unwrap_or(dialect::ShaderDialect::Shadertoy);
+    shader::header_line_count_for_dialect(common, source, dialect)
 }
 
 /// Minifies GLSL source: strips comments/whitespace and shortens
@@ -375,6 +418,10 @@ fn shadertoy_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(golf_shader_with_common, m)?)?;
     m.add_function(wrap_pyfunction!(golf_shader_ex, m)?)?;
     m.add_function(wrap_pyfunction!(fragment_header_line_count, m)?)?;
+    m.add_function(wrap_pyfunction!(fragment_header_line_count_for_dialect, m)?)?;
+    m.add_function(wrap_pyfunction!(detect_dialect, m)?)?;
+    m.add("DIALECT_SHADERTOY", dialect::ShaderDialect::Shadertoy.id())?;
+    m.add("DIALECT_GLSL", dialect::ShaderDialect::GlslStandalone.id())?;
     m.add("PASS_BUFFER_A", renderer::PASS_BUFFER_A)?;
     m.add("PASS_BUFFER_B", renderer::PASS_BUFFER_B)?;
     m.add("PASS_BUFFER_C", renderer::PASS_BUFFER_C)?;

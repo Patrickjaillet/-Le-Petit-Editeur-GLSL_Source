@@ -11,7 +11,7 @@
 ; Sortie : packaging\output\PetitEditeurGLSL-Setup-<version>.exe
 
 #define AppName "Petit Editeur GLSL"
-#define AppVersion "0.1.12"
+#define AppVersion "0.1.13"
 #define AppPublisher "Petit Editeur GLSL"
 #define AppExeName "PetitEditeurGLSL.exe"
 ; Dossier produit par packaging\build_release.ps1 (PyInstaller, mode onedir)

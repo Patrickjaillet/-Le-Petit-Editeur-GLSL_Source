@@ -85,11 +85,24 @@
     },
     "golf_options": {
       "title": "压缩代码",
-      "intro": "压缩操作始终会移除注释、压缩空白并缩短数字字面量。数值（以及自动检测到的滑块）不受以下设置影响，始终保持不变。",
+      "intro": "下方部分转换可单独开启或关闭；其余转换始终生效，仅作说明列出。",
       "rename": "重命名标识符（变量/函数）",
       "dead_code": "移除死代码（从未使用的函数/结构体）",
       "algebra": "简化代数表达式（x*0.、x*1.、x+0. 等）",
-      "algebra_tooltip": "对于涉及成员访问/swizzle 的表达式（例如 p.z*0.），偶尔可能生成无效代码 — 此时压缩会自动回滚（参见“压缩已取消”对话框）。如果经常遇到此问题，请取消勾选此选项。"
+      "algebra_tooltip": "对于涉及成员访问/swizzle 的表达式（例如 p.z*0.），偶尔可能生成无效代码 — 此时压缩会自动回滚（参见“压缩已取消”对话框）。如果经常遇到此问题，请取消勾选此选项。",
+      "section_optional_title": "可选转换",
+      "section_optional_desc": "可根据可读性或兼容性需求单独启用或禁用。",
+      "rename_desc": "将每个变量和函数替换为一到两个字母的名称。这是最激进的转换：压缩后的代码将无法阅读。",
+      "dead_code_desc": "移除从未被调用的函数和结构体，并直接内联仅被调用一次的函数。",
+      "algebra_desc": "简化平凡表达式（如 x*0.、x*1.、x+0.、pow(x,2.)、双重取反等）。",
+      "section_always_title": "始终生效",
+      "section_always_desc": "这些转换永远不会改变着色器的行为：它们始终执行，没有可关闭它们的复选框。",
+      "always_cleanup_title": "基础清理",
+      "always_cleanup_desc": "移除注释，压缩多余空白与冗余分号，缩短数字字面量（0.50 → .5）。",
+      "always_structure_title": "语法简化",
+      "always_structure_desc": "移除隐式的「in」限定符，压缩 for 循环，合并连续声明，简化花括号与向量构造函数，在可能时将 if/else 改写为三元运算符。",
+      "always_macros_title": "宏提取",
+      "always_macros_desc": "仅当能真正减小文件体积时，才会将重复出现的子表达式提取为 #define 宏。"
     },
     "golf_common_confirm": {
       "title": "压缩代码",

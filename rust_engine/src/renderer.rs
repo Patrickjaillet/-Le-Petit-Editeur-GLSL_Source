@@ -1,3 +1,4 @@
+use crate::dialect::{self, ShaderDialect};
 use crate::shader;
 use crate::texture::{ChannelTexture, ProceduralKind};
 
@@ -266,6 +267,23 @@ pub struct Engine {
     pass_sources: [Option<String>; NUM_PASSES],
     pipelines: [Option<wgpu::RenderPipeline>; NUM_PASSES],
 
+    /// Dernier dialecte détecté par pass (voir `dialect.rs`), utilisé à la
+    /// fois pour choisir quel chemin de compilation appliquer
+    /// (`shader::build_fragment_source` vs `build_fragment_source_standalone`)
+    /// et comme "previous" lors du prochain `compile_pass`, exactement
+    /// comme `main_window.py::_pass_dialects` côté footer — les deux sont
+    /// calculés indépendamment par la même fonction pure sur le même
+    /// texte, donc toujours d'accord, sans qu'aucun des deux ait besoin de
+    /// connaître l'existence de l'autre.
+    pass_dialects: [Option<ShaderDialect>; NUM_PASSES],
+    /// Buffers UBO zero-fill (16 octets chacun, voir
+    /// `shader::CustomUniformDecl`) backant les `uniform` personnalisés
+    /// détectés en mode GLSL standalone pour le dernier compile réussi de
+    /// chaque pass, avec leur binding assigné — réutilisés par
+    /// `build_bind_group` à chaque frame (pas de GPU work par frame, la
+    /// même paire `(binding, Buffer)` est simplement re-référencée).
+    custom_uniform_buffers: [Vec<(u32, wgpu::Buffer)>; NUM_PASSES],
+
     /// The previous call's readback, still in flight (submitted to the GPU
     /// but not necessarily mapped yet). `render()` resolves this *before*
     /// blocking on the frame it just submitted, so the CPU only stalls on
@@ -360,6 +378,8 @@ impl Engine {
             }),
             pass_sources: std::array::from_fn(|_| None),
             pipelines: [None, None, None, None, None],
+            pass_dialects: std::array::from_fn(|_| None),
+            custom_uniform_buffers: std::array::from_fn(|_| Vec::new()),
             pending_readback: None,
         })
     }
@@ -396,10 +416,32 @@ impl Engine {
         self.common_src = source.to_string();
     }
 
-    /// Compiles one pass (`PASS_BUFFER_A`..`PASS_BUFFER_D` or `PASS_IMAGE`)
-    /// from plain, 100% Shadertoy-compatible `mainImage` source. The
-    /// `Common` source (see `set_common`) is prepended first, exactly like
-    /// Shadertoy's own "Common" tab.
+    /// Compiles one pass (`PASS_BUFFER_A`..`PASS_BUFFER_D` or `PASS_IMAGE`).
+    /// The `Common` source (see `set_common`) is prepended first, exactly
+    /// like Shadertoy's own "Common" tab — for *both* dialects below: a
+    /// GLSL standalone pass can still call Common-declared helpers, Common
+    /// itself staying visible but inert w.r.t. dialect detection (it has
+    /// neither `mainImage` nor `main()` of its own, see `dialect.rs`).
+    ///
+    /// Which of the two compilation paths runs is decided here, once, from
+    /// `dialect::detect_dialect` on the combined source — never
+    /// re-detected independently elsewhere in this file, so the pipeline
+    /// that actually gets built always agrees with `self.pass_dialects`
+    /// (itself the same value `main_window.py`'s footer indicator would
+    /// compute for this same text, see `pass_dialects`'s doc comment):
+    /// - `Shadertoy` : chemin historique inchangé (`build_fragment_source`),
+    ///   wrapper `mainImage` fixe.
+    /// - `GlslStandalone` : `build_fragment_source_standalone`, harness
+    ///   conditionnelle — voir sa doc pour le détail de ce qui est injecté
+    ///   ou non.
+    ///
+    /// Le choix entre les deux ne passe plus par un `match` en dur ici :
+    /// `shader::compile_backend_for` cherche le backend associé au
+    /// dialecte détecté dans un petit registre (roadmap1.md, section
+    /// "Architecture extensible pour de futurs langages") — un futur
+    /// troisième dialecte avec un backend fonctionnel n'imposera aucune
+    /// modification de cette fonction, juste une nouvelle entrée dans ce
+    /// registre (voir `ARCHITECTURE.md`).
     pub fn compile_pass(&mut self, pass: usize, user_src: &str) -> Result<(), String> {
         if pass >= NUM_PASSES {
             return Err(format!("pass invalide: {pass}"));
@@ -411,7 +453,17 @@ impl Engine {
         };
         let channel_kinds: [shader::ChannelKind; 4] =
             std::array::from_fn(|i| Self::channel_kind(&self.channels[pass][i]));
-        let fragment_src = shader::build_fragment_source(&combined, channel_kinds, pass == PASS_IMAGE);
+
+        let detection = dialect::detect_dialect(&combined, self.pass_dialects[pass]);
+        // Mis à jour immédiatement (avant même de tenter la compilation
+        // GLSL) : c'est une propriété du *texte*, pas du succès de sa
+        // compilation — un shader qui ne compile pas encore garde quand
+        // même son dialecte détecté comme "previous" pour la prochaine
+        // frappe, exactement comme le ferait l'indicateur du footer côté
+        // Python pour ce même texte.
+        self.pass_dialects[pass] = Some(detection.dialect);
+        let backend = shader::compile_backend_for(detection.dialect);
+        let (fragment_src, custom_uniforms) = backend(&combined, channel_kinds, pass == PASS_IMAGE);
 
         self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let vertex_module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -453,6 +505,21 @@ impl Engine {
         entries.extend(channel_binding_entry(3, 4, channel_kinds[1]));
         entries.extend(channel_binding_entry(5, 6, channel_kinds[2]));
         entries.extend(channel_binding_entry(7, 8, channel_kinds[3]));
+        // Un binding par `uniform` personnalisé auto-détecté en mode GLSL
+        // standalone (voir `shader::CustomUniformDecl`) — vide pour le
+        // chemin Shadertoy et pour un standalone qui n'en déclare aucun.
+        for decl in &custom_uniforms {
+            entries.push(wgpu::BindGroupLayoutEntry {
+                binding: decl.binding,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            });
+        }
         let bind_group_layout = self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("shadertoy-bind-group-layout"),
             entries: &entries,
@@ -494,10 +561,37 @@ impl Engine {
             multiview: None,
         });
 
+        // Un petit UBO zero-fill par uniform personnalisé (16 octets fixes
+        // quel que soit le type — `float`/`int`/`bool` gaspillent un peu
+        // par rapport au strict std140, mais évite toute logique de taille
+        // par type pour un cas volontairement simple, voir
+        // `CustomUniformDecl`). Valeur par défaut 0 dans tous les cas : le
+        // shader compile et s'affiche, potentiellement "cassé"
+        // visuellement si l'utilisateur attendait une vraie valeur —
+        // choix documenté dans `shader::CustomUniformDecl`.
+        let custom_buffers: Vec<(u32, wgpu::Buffer)> = custom_uniforms
+            .iter()
+            .map(|decl| {
+                let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(&format!("custom-uniform-{}", decl.name)),
+                    size: 16,
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: true,
+                });
+                {
+                    let mut view = buffer.slice(..).get_mapped_range_mut();
+                    view.fill(0);
+                }
+                buffer.unmap();
+                (decl.binding, buffer)
+            })
+            .collect();
+
         self.pipelines[pass] = Some(pipeline);
         self.bind_group_layouts[pass] = Some(bind_group_layout);
         self.pipeline_layouts[pass] = Some(pipeline_layout);
         self.pass_sources[pass] = Some(user_src.to_string());
+        self.custom_uniform_buffers[pass] = custom_buffers;
         Ok(())
     }
 
@@ -735,7 +829,7 @@ impl Engine {
 
     fn build_bind_group(&self, pass: usize) -> wgpu::BindGroup {
         let ch = &self.channels[pass];
-        let entries = vec![
+        let mut entries = vec![
             wgpu::BindGroupEntry {
                 binding: 0,
                 resource: self.globals_buffer.as_entire_binding(),
@@ -773,6 +867,16 @@ impl Engine {
                 resource: wgpu::BindingResource::Sampler(&self.sampler),
             },
         ];
+        // Bindings des `uniform` personnalisés (mode GLSL standalone, voir
+        // `compile_pass`/`shader::CustomUniformDecl`) — vide pour toute
+        // pass Shadertoy ou standalone n'en déclarant aucun, auquel cas
+        // cette boucle ne fait rien et `entries` reste inchangé.
+        for (binding, buffer) in &self.custom_uniform_buffers[pass] {
+            entries.push(wgpu::BindGroupEntry {
+                binding: *binding,
+                resource: buffer.as_entire_binding(),
+            });
+        }
         self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("shadertoy-bind-group"),
             // Always `Some` here: `build_bind_group` is only ever called
@@ -828,6 +932,48 @@ impl Engine {
             return Err("aucun shader compilé avec succès pour le moment".to_string());
         }
 
+        // Bug corrigé (RM.md, Priorité 1 : "premier render() renvoie un
+        // buffer entièrement à zéro"). `pending_readback` n'est vide que
+        // dans deux cas : tout premier appel après `Engine::new`, ou
+        // premier appel après un `resize()` (qui le remet à `None` lui
+        // aussi). Dans ces cas-là, `submit_frame` ci-dessous n'aurait rien
+        // à renvoyer comme "frame précédente" et on serait forcé de faire
+        // fuiter un buffer vide côté Python. On absorbe donc ici, en
+        // interne, une frame de chauffe supplémentaire, soumise avec
+        // exactement les mêmes paramètres (`time`/`mouse`/`frame`/`date`)
+        // que l'appel réel juste en dessous : la "frame précédente" qu'il
+        // récupérera sera donc pixel-identique à ce qu'attend l'appelant,
+        // sans jamais lui exposer de buffer à zéro. Coût : une soumission
+        // GPU en plus, mais seulement lors de ce tout premier appel (ou du
+        // premier après resize) — tous les suivants restent aussi pipelinés
+        // qu'avant.
+        if self.pending_readback.is_none() {
+            self.submit_frame(time, time_delta, mouse, frame, date);
+        }
+
+        match self.submit_frame(time, time_delta, mouse, frame, date) {
+            Some(previous) => Self::resolve_readback(&self.device, previous),
+            None => unreachable!(
+                "pending_readback vient d'être peuplé juste au-dessus par la frame de chauffe"
+            ),
+        }
+    }
+
+    /// Encode et soumet une frame complète (passes Buffer A-D puis Image),
+    /// programme la lecture GPU→CPU du résultat de façon asynchrone, et la
+    /// stocke comme "lecture en attente" — en renvoyant celle qui y était
+    /// éventuellement déjà (soumise par l'appel précédent). Factorisé hors
+    /// de `render()` pour pouvoir être appelé deux fois lors du tout premier
+    /// appel (frame de chauffe + frame réelle, voir `render()`) sans dupliquer
+    /// tout l'encodage.
+    fn submit_frame(
+        &mut self,
+        time: f32,
+        time_delta: f32,
+        mouse: (f32, f32, f32, f32),
+        frame: u32,
+        date: (f32, f32, f32, f32),
+    ) -> Option<PendingReadback> {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
@@ -934,27 +1080,23 @@ impl Engine {
             padded_bytes_per_row,
         };
 
-        // Resolve the *previous* call's frame, not this one: by the time
-        // the caller comes back for another frame (a whole UI frame later),
-        // the GPU has almost always already finished and its map callback
-        // already fired, so `Engine::resolve_readback`'s poll degrades to
-        // an instant no-op instead of a real stall. `current` always
-        // replaces whatever was pending, whether or not there was anything
-        // to return this call — that's what keeps the pipeline populated
-        // for every call after the first, instead of only ever bootstrapping.
+        // Renvoie la lecture *précédente* (soumise par l'appel d'avant),
+        // pas celle qu'on vient de programmer : le temps que l'appelant
+        // revienne pour une frame de plus (une frame UI plus tard), le GPU
+        // a presque toujours déjà terminé et son callback de mapping s'est
+        // déjà déclenché, donc le `device.poll` dans `resolve_readback`
+        // dégénère en un no-op instantané plutôt qu'un vrai blocage.
+        // `current` remplace systématiquement ce qui était en attente,
+        // qu'il y ait ou non quelque chose à renvoyer cette fois — c'est ce
+        // qui garde le pipeline peuplé à chaque appel après le premier.
         //
-        // The very first call after construction/resize has no previous
-        // frame to hand back yet (nothing was in flight before it). Rather
-        // than block on the frame it just submitted — which would defeat
-        // the whole point, since `current` needs to stay unresolved and
-        // in `pending_readback` for the *next* call to pick up — it
-        // returns a single blank frame. One black frame at startup/after a
-        // resize is the same one-time cost `resize()` already accepts by
-        // clearing buffer contents; every call after it is fully pipelined.
-        match self.pending_readback.replace(current) {
-            Some(previous) => Self::resolve_readback(&self.device, previous),
-            None => Ok(vec![0u8; (unpadded_bytes_per_row * self.height) as usize]),
-        }
+        // Le tout premier appel après construction/resize n'a encore
+        // aucune frame précédente à rendre (rien n'était en vol avant lui) :
+        // cette fonction renvoie alors `None`. C'est `render()`, l'appelant,
+        // qui gère ce cas en absorbant une frame de chauffe supplémentaire
+        // avant d'appeler `submit_frame` une seconde fois, plutôt que de
+        // laisser un buffer vide fuiter côté Python.
+        self.pending_readback.replace(current)
     }
 
     /// Blocks until `pending`'s GPU→CPU copy is mapped, then copies the

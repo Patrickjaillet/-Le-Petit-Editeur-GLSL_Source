@@ -2,6 +2,19 @@
 
 This changelog summarizes, in plain language, what changes from version to version of **Little GLSL Editor**. It is intended for people who use the software — for the technical details of each feature, see `ROADMAP.md`.
 
+## Version 0.1.13 — August 17, 2026
+
+### New
+
+- **GLSL and Shadertoy shaders are now both accepted automatically, with no manual conversion.** Until now, every pass had to follow the Shadertoy convention (a `mainImage` function). Pasting or typing a "raw" GLSL fragment shader — with its own `void main()`, its own `#version` directive, its own `uniform` declarations, or the older `gl_FragColor`/`gl_FragData` output style — now compiles directly, without editing it by hand first. The software detects which style is being used and adapts on the fly:
+  - the shader's own `#version` is kept if present, otherwise one is added automatically;
+  - Shadertoy's built-in values (`iTime`, `iResolution`, `iMouse`, `iChannel0-3`, ...) are made available only for the ones the code actually uses;
+  - the older `gl_FragColor`/`gl_FragData[0]` output style is translated automatically into the modern form;
+  - the shader's own custom `uniform` declarations are now accepted as well (currently given a default value of 0 — not wired to the sliders panel yet);
+  - compile-error messages point to the correct line in the editor in both styles, exactly as before.
+  - The `Common` tab and Buffer A-D passes keep working exactly as before, independently of which style each pass uses.
+- **A small indicator now appears in the footer** (🌈 *Shadertoy* / 📄 *GLSL*) showing which style was detected for the pass currently being edited, updating live shortly after you stop typing or as soon as you switch tabs. Hovering over it explains, in plain language, which part of the code triggered that detection (e.g. "detected via `mainImage()`").
+
 ## Version 0.1.12 — August 16, 2026
 
 ### New

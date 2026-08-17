@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QStandardPaths, QTimer, Qt
@@ -14,6 +15,8 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
+    QGroupBox,
     QInputDialog,
     QLabel,
     QLineEdit,
@@ -49,6 +52,13 @@ from video_source import VideoChannelSource
 DEFAULT_SHADER_PATH = Path(__file__).resolve().parent.parent / "assets" / "shaders" / "default.frag"
 COMPILE_DEBOUNCE_MS = 350
 SLIDER_COMPILE_DEBOUNCE_MS = 100
+# Hard cap on how long `_on_text_changed` may keep postponing a recompile
+# by restarting the single-shot `_compile_timer`. Needed because a
+# continuous edit stream (a playing keyframed slider, see
+# `_compile_burst_started_at`) never leaves a `delay`-sized gap for the
+# debounce to actually fire — without this cap the shader would simply
+# stop recompiling for as long as the stream continues.
+MAX_COMPILE_DEBOUNCE_MS = 250
 
 _LINE_COL_RE = re.compile(r":(\d+):(\d+)")
 MAX_RECENT_FILES = 8
@@ -92,6 +102,20 @@ class MainWindow(QMainWindow):
 
         self._engine = engine_bridge.Engine(VIEWPORT_WIDTH, VIEWPORT_HEIGHT)
         self._pending_edit_from_slider = False
+        # Wall-clock time (`time.monotonic()`) of the first edit in the
+        # current uninterrupted burst of `_compile_timer` restarts, or
+        # `None` when the timer is idle. `_on_text_changed` restarts a
+        # *single-shot* timer on every edit, which is a correct debounce
+        # for human typing/dragging (edits stop, the gap exceeds `delay`,
+        # the timer finally fires) but starves completely under a
+        # continuous edit stream that never leaves a `delay`-sized gap —
+        # exactly what a playing keyframed slider produces, since
+        # `Viewport.timeUpdated`/`set_time` can emit a fresh
+        # `literalEdited` on every ~16ms render tick. Without a cap, the
+        # shader would then never recompile again for as long as the
+        # animation keeps interpolating, even though the sliders panel
+        # keeps showing updated values. See `MAX_COMPILE_DEBOUNCE_MS`.
+        self._compile_burst_started_at: float | None = None
         self._pre_golf_source: str | None = None
         self._golf_options: tuple[bool, bool, bool] | None = (True, True, True)
         self._is_dirty = False
@@ -137,6 +161,16 @@ class MainWindow(QMainWindow):
         # bother snapshotting it" (used when loading a project/new file).
         self._slider_layouts: dict[str, list[dict]] = {}
         self._slider_panel_tab: int | None = self._current_tab
+
+        # Dernier dialecte détecté (`engine_bridge.DIALECT_SHADERTOY`/
+        # `DIALECT_GLSL`) par pass, clé `str(pass_idx)` — même convention
+        # que `_slider_layouts`. N'inclut jamais `COMMON_TAB` : le Common
+        # n'est pas lui-même un dialecte, voir `_update_dialect_indicator`.
+        # Sert de "previous" à `engine_bridge.detect_dialect` pour qu'un
+        # texte sans aucun signal (ex. un helper pur) garde le mode déjà
+        # affiché plutôt que de retomber sur une valeur par défaut à
+        # chaque frappe.
+        self._pass_dialects: dict[str, str] = {}
 
         self._settings = QSettings("PetitEditeurGLSL", "PetitEditeurGLSL")
         raw_recent = self._settings.value("recentFiles", [])
@@ -355,6 +389,10 @@ class MainWindow(QMainWindow):
         else:
             self.ichannel_panel.setEnabled(True)
             self.ichannel_panel.set_active_pass(new_tab)
+            # Rend le mode immédiatement visible au changement d'onglet,
+            # sans attendre une frappe/recompile — l'indicateur reflète
+            # déjà le dernier texte compilé de cet onglet.
+            self._update_dialect_indicator(new_tab, text)
         self._refresh_sliders_for(text)
 
     def _refresh_sliders_for(self, source: str) -> None:
@@ -407,9 +445,23 @@ class MainWindow(QMainWindow):
             self._pass_sources[self._current_tab] = text
         delay = SLIDER_COMPILE_DEBOUNCE_MS if self._pending_edit_from_slider else self._compile_debounce_ms
         self._pending_edit_from_slider = False
+
+        now = time.monotonic()
+        if self._compile_burst_started_at is None:
+            self._compile_burst_started_at = now
+        elif (now - self._compile_burst_started_at) * 1000.0 >= MAX_COMPILE_DEBOUNCE_MS:
+            # The debounce has been continuously postponed for longer than
+            # the cap (a burst of edits with no gap ever reaching `delay`)
+            # — force the recompile now instead of restarting the timer
+            # again, or a playing keyframed slider would starve it forever.
+            self._compile_timer.stop()
+            self._compile_burst_started_at = None
+            self._recompile_current_tab()
+            return
         self._compile_timer.start(delay)
 
     def _recompile_current_tab(self) -> None:
+        self._compile_burst_started_at = None
         self._engine.set_common(self._common_source)
         if self._current_tab == COMMON_TAB:
             # Common changed: repropagate to every pass that has real
@@ -419,10 +471,33 @@ class MainWindow(QMainWindow):
                     self._compile_one_pass(pass_idx, src, show_marker=False)
             self.footer.set_compile_ok()
             self._refresh_sliders_for(self._common_source)
+            # Le Common lui-même n'est pas un dialecte (pas de
+            # mainImage/main() attendu) : l'indicateur garde le mode du
+            # dernier onglet de pass affiché plutôt que d'être recalculé
+            # sur du texte qui ne le concerne pas.
             return
         source = self._pass_sources[self._current_tab]
         self._refresh_sliders_for(source)
+        self._update_dialect_indicator(self._current_tab, source)
         self._compile_one_pass(self._current_tab, source, show_marker=True)
+
+    def _update_dialect_indicator(self, pass_idx: int, source: str) -> None:
+        """Redétecte le dialecte (Shadertoy `mainImage` vs GLSL standalone
+        `main`) de la source d'un pass et met à jour le footer — réévalué
+        au même déclencheur que la compilation live (recompile debouncée,
+        ou changement d'onglet), jamais à chaque frappe individuelle, pour
+        ne pas faire clignoter l'indicateur en cours de frappe.
+        `previous_dialect` (le mode déjà affiché pour ce pass) est passé
+        au détecteur Rust pour qu'un texte sans aucun signal garde ce
+        mode plutôt que de retomber sur une valeur par défaut arbitraire.
+        """
+        if not source:
+            self.footer.clear_dialect()
+            return
+        previous = self._pass_dialects.get(str(pass_idx), "")
+        dialect_id, signal_key = engine_bridge.detect_dialect(source, previous)
+        self._pass_dialects[str(pass_idx)] = dialect_id
+        self.footer.set_dialect(dialect_id, signal_key)
 
     def _compile_one_pass(self, pass_idx: int, source: str, show_marker: bool) -> None:
         if not source:
@@ -433,7 +508,7 @@ class MainWindow(QMainWindow):
             label = engine_bridge.PASS_LABELS[pass_idx]
             self.footer.set_compile_error(f"[{label}] {exc}")
             if show_marker:
-                self._show_error_marker(str(exc), source)
+                self._show_error_marker(str(exc), source, pass_idx)
             return
         if show_marker:
             self.editor.clear_error_marker()
@@ -466,13 +541,23 @@ class MainWindow(QMainWindow):
         # the whole SLIDER_COMPILE_DEBOUNCE_MS window.
         QTimer.singleShot(150, self._recompile_current_tab)
 
-    def _show_error_marker(self, message: str, source: str) -> None:
+    def _show_error_marker(self, message: str, source: str, pass_idx: int) -> None:
         line = 1
         match = _LINE_COL_RE.search(message)
         if match:
             wrapped_line = int(match.group(1))
+            # Le nombre de lignes de harness qui précèdent le code de
+            # l'utilisateur dépend du dialecte compilé pour ce pass (le
+            # mode GLSL standalone n'injecte le bloc Globals/iChannel* que
+            # s'ils sont réellement référencés, voir
+            # `shader::build_fragment_source_standalone`) — on réutilise
+            # donc le dernier dialecte détecté pour ce pass plutôt que de
+            # supposer Shadertoy comme avant ce chantier.
+            dialect_id = self._pass_dialects.get(str(pass_idx), engine_bridge.DIALECT_SHADERTOY)
             try:
-                offset = engine_bridge.fragment_header_line_count(self._common_source, source)
+                offset = engine_bridge.fragment_header_line_count_for_dialect(
+                    self._common_source, source, dialect_id
+                )
             except RuntimeError:
                 offset = 0
             line = max(1, wrapped_line - offset)
@@ -484,28 +569,107 @@ class MainWindow(QMainWindow):
         self.viewport.set_paused(paused)
         self._play_action.setText(tr("toolbar.play") if paused else tr("toolbar.pause"))
 
+    @staticmethod
+    def _add_transform_row(
+        group_layout: QVBoxLayout,
+        checkbox: QCheckBox,
+        description: str,
+        *,
+        tooltip: str | None = None,
+    ) -> None:
+        """Adds one "transform row" (a checkbox with a smaller, indented,
+        muted description line below it explaining exactly what that
+        transform does) to `group_layout`. Shared by every row in
+        `_prompt_golf_options`'s dialog, whether the checkbox ends up
+        interactive (the three optional transforms) or checked-and-disabled
+        (the always-on transforms, listed for transparency rather than
+        choice)."""
+        if tooltip:
+            checkbox.setToolTip(tooltip)
+        group_layout.addWidget(checkbox)
+
+        desc_label = QLabel(description)
+        desc_label.setWordWrap(True)
+        desc_label.setContentsMargins(22, 0, 0, 6)
+        desc_label.setStyleSheet("color: palette(mid); font-size: 11px;")
+        group_layout.addWidget(desc_label)
+
     def _prompt_golf_options(self) -> tuple[bool, bool, bool] | None:
-        """Small dialog for the three "aggressive" golf transforms
-        (identifier renaming, dead-code elimination, algebraic
-        simplification) — comments/whitespace/numeric-literal/semicolon
-        minification always happen regardless, there's no real downside to
-        those. Choices persist via QSettings. Returns None if the user
-        cancelled."""
+        """Dialog listing every golf transform the engine applies, each with
+        its own description: the three "aggressive" ones a user can opt out
+        of independently (identifier renaming, dead-code elimination,
+        algebraic simplification), grouped under real checkboxes, plus the
+        always-on ones (comment/whitespace/literal/semicolon cleanup,
+        syntactic simplifications, macro extraction) grouped underneath as
+        checked-and-disabled rows -- shown for transparency, since they can
+        never actually be turned off engine-side (see `golf.rs`'s own
+        pipeline doc comment). Choices persist via QSettings. Returns None
+        if the user cancelled."""
         dialog = QDialog(self)
         dialog.setWindowTitle(tr("dialogs.golf_options.title"))
+        dialog.setMinimumWidth(460)
+        dialog.setMaximumWidth(460)
+
         layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel(tr("dialogs.golf_options.intro")))
+        layout.setSpacing(12)
+
+        intro_label = QLabel(tr("dialogs.golf_options.intro"))
+        intro_label.setWordWrap(True)
+        layout.addWidget(intro_label)
+
+        # ---- Optional transforms (real, persisted checkboxes) -----------
+        optional_group = QGroupBox(tr("dialogs.golf_options.section_optional_title"))
+        optional_layout = QVBoxLayout(optional_group)
+        optional_layout.setSpacing(2)
+
+        optional_desc = QLabel(tr("dialogs.golf_options.section_optional_desc"))
+        optional_desc.setWordWrap(True)
+        optional_desc.setStyleSheet("color: palette(mid); font-size: 11px;")
+        optional_layout.addWidget(optional_desc)
 
         rename_box = QCheckBox(tr("dialogs.golf_options.rename"))
         rename_box.setChecked(self._settings.value("golfRenameIdentifiers", True, type=bool))
+        self._add_transform_row(optional_layout, rename_box, tr("dialogs.golf_options.rename_desc"))
+
         dce_box = QCheckBox(tr("dialogs.golf_options.dead_code"))
         dce_box.setChecked(self._settings.value("golfRemoveDeadCode", True, type=bool))
+        self._add_transform_row(optional_layout, dce_box, tr("dialogs.golf_options.dead_code_desc"))
+
         algebra_box = QCheckBox(tr("dialogs.golf_options.algebra"))
-        algebra_box.setToolTip(tr("dialogs.golf_options.algebra_tooltip"))
         algebra_box.setChecked(self._settings.value("golfSimplifyAlgebra", True, type=bool))
-        layout.addWidget(rename_box)
-        layout.addWidget(dce_box)
-        layout.addWidget(algebra_box)
+        self._add_transform_row(
+            optional_layout,
+            algebra_box,
+            tr("dialogs.golf_options.algebra_desc"),
+            tooltip=tr("dialogs.golf_options.algebra_tooltip"),
+        )
+        layout.addWidget(optional_group)
+
+        # ---- Always-on transforms (informational, checked & disabled) ---
+        always_group = QGroupBox(tr("dialogs.golf_options.section_always_title"))
+        always_layout = QVBoxLayout(always_group)
+        always_layout.setSpacing(2)
+
+        always_desc = QLabel(tr("dialogs.golf_options.section_always_desc"))
+        always_desc.setWordWrap(True)
+        always_desc.setStyleSheet("color: palette(mid); font-size: 11px;")
+        always_layout.addWidget(always_desc)
+
+        for title_key, desc_key in (
+            ("always_cleanup_title", "always_cleanup_desc"),
+            ("always_structure_title", "always_structure_desc"),
+            ("always_macros_title", "always_macros_desc"),
+        ):
+            always_box = QCheckBox(tr(f"dialogs.golf_options.{title_key}"))
+            always_box.setChecked(True)
+            always_box.setEnabled(False)
+            self._add_transform_row(always_layout, always_box, tr(f"dialogs.golf_options.{desc_key}"))
+        layout.addWidget(always_group)
+
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        layout.addWidget(separator)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(dialog.accept)

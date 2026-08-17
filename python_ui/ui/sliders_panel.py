@@ -22,6 +22,19 @@ play/pause/reset-time controls already in the toolbar). Once a slider has
 keyframes bracketing the current time (held constant before the first and
 after the last, never extrapolated) on every tick, letting a shader
 sequence be previewed by just hitting Play.
+
+BUG FIX: `set_time()` used to re-apply keyframe interpolation on *every*
+call, even when `t` hadn't actually moved since the previous call. Since
+`Viewport.timeUpdated` fires on every render tick "paused or not"
+(~60/s), any slider carrying keyframes had its value silently reasserted
+~60 times a second regardless of playback state. That undid manual
+interaction (drag, typed value, "reset", "randomize") on such a slider
+within a single frame, and — because each reassertion goes through
+`_emit_edit` -> `literalEdited` -> a fresh compile-debounce restart in
+`MainWindow` — starved the compile debounce indefinitely while a
+keyframed slider was mid-interpolation, so the rendered shader stopped
+following the values shown in the panel. `set_time` now only
+re-evaluates keyframes when `t` has genuinely changed.
 """
 from __future__ import annotations
 
@@ -1015,7 +1028,19 @@ class SlidersPanel(QTabWidget):
         — the common case, so this stays cheap. Skips the edit entirely
         when the interpolated value hasn't meaningfully moved since the
         last tick, so a paused/idle clock doesn't spam edits into the
-        editor 60 times a second for nothing."""
+        editor 60 times a second for nothing.
+
+        Also skips the whole pass when `t` itself hasn't changed since the
+        previous call. `Viewport.timeUpdated` fires on *every* render tick
+        whether the clock is playing or paused, so without this guard a
+        paused clock (constant `t`, called ~60x/s) would keep re-imposing
+        the keyframe-interpolated value on top of anything the user just
+        did to that slider by hand (drag, typed value, reset, randomize):
+        the manual edit gets silently overwritten within a single frame,
+        every time, and never actually sticks — see the module docstring's
+        "BUG FIX" paragraph."""
+        if t == self._time:
+            return
         self._time = t
         for ordinal, (state, widgets) in enumerate(zip(self._literals, self._rows)):
             if widgets is None or not state.keyframes:

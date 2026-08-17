@@ -4180,35 +4180,25 @@ mod merge_declarations_tests {
 
     #[test]
     fn regression_default_frag_size_shrinks() {
-        // Unlike every other always-on transform in this file,
-        // `default.frag` is *not* a no-op case for this one: its
-        // `palette()` function declares four adjacent `vec3` constants
-        // (`a`,`b`,`c`,`d`) and `mainImage` opens with three adjacent
-        // `float` declarations (`speed`,`scale`,`colorMix`) — exactly the
-        // "raymarching/shader-header" shape this ticket targets, so this is
-        // the first pass in the file whose regression check is a real size
-        // *reduction* rather than a confirmation of no false positives.
-        // 559 -> 521 bytes with only merge_consecutive_declarations added
-        // (measured when that pass was introduced; the 559 figure quoted
-        // by earlier entries in this file predates it) -> 519 bytes once
-        // extract_repeated_subexpr_macros was later wired into the
-        // pipeline too (see that pass's own regression test further down
-        // in this file): `iResolution.xy` appears twice in default.frag
-        // (once in the aspect-ratio correction, once in the iChannel0
-        // sample), a small but genuine net-positive extraction -> 502 bytes
-        // once fold_vector_constructor_splat was wired in (see
-        // vector_splat_tests further down): the roadmap ticket for that
-        // pass assumed `palette()`'s four `vec3` constants were all built
-        // from distinct components and would be a no-op here, but two of
-        // them, `vec3(0.5,0.5,0.5)` and `vec3(1.0,1.0,1.0)`, are genuine
-        // splats once golfed to `.5`/`1.` — only the third, `vec3(0.263,
-        // 0.416,0.557)`, is actually the no-op case the ticket had in mind
-        // -> 499 bytes once strip_default_in_qualifier was wired in (see
-        // strip_in_qualifier_tests further down): default.frag's one `in`
-        // parameter qualifier (`in vec2 fragCoord`) is dropped, -3 bytes.
+        // Historical note: earlier entries in this test tracked a much
+        // smaller, terser `default.frag` (a `palette()`-based shader that
+        // golfed down to 499 bytes through this exact sequence of passes:
+        // 559 -> 521 -> 519 -> 502 -> 499, see the project's ROADMAP.md for
+        // the blow-by-blow). `default.frag` was later entirely rewritten
+        // into a longer, heavily-commented "raymarching fractal + glow
+        // volumétrique" study shader with verbose French documentation and
+        // self-explanatory identifiers (`getAspectCorrectedUV`,
+        // `processFractalFold`, `computePaletteColor`, ...) — a deliberate
+        // authoring choice for a shader that ships as the very first thing
+        // a new user sees, not a regression. This test's expected byte
+        // count is therefore no longer 499; it now reflects the current
+        // `default.frag`, first verified for real once a working
+        // rustc/cargo toolchain became available in this environment
+        // (previous sessions could only golf/relex `golf.rs` in isolation,
+        // never actually run this test against the real file on disk).
         let src = include_str!("../../python_ui/assets/shaders/default.frag");
         let golfed = golf_shader(src);
-        assert_eq!(golfed.len(), 499, "expected byte count for golfed default.frag: {} bytes", golfed.len());
+        assert_eq!(golfed.len(), 1417, "expected byte count for golfed default.frag: {} bytes", golfed.len());
     }
 }
 
@@ -4410,17 +4400,18 @@ mod strip_redundant_braces_tests {
 
     #[test]
     fn regression_default_frag_unaffected() {
-        // default.frag's only if/for/while body (the for-loop in
-        // mainImage) holds several statements, not one, so this pass must
-        // be a no-op on it — the byte count already asserted by
+        // default.frag's `if`/`for`/`while` bodies (the fractal-fold loop
+        // and the raymarching loop, both multi-statement) all hold several
+        // statements, not one, so this pass must be a no-op on it — the
+        // byte count already asserted by
         // merge_declarations_tests::regression_default_frag_size_shrinks
-        // (499 bytes, once extract_repeated_subexpr_macros,
-        // fold_vector_constructor_splat and strip_default_in_qualifier
-        // were wired in too — see that test's own comment) must stay
-        // exactly that after adding this pass.
+        // (see that test's comment for why it is 1417, not the older 499
+        // from before default.frag was rewritten into its current longer,
+        // heavily-commented form) must stay exactly that after adding this
+        // pass.
         let src = include_str!("../../python_ui/assets/shaders/default.frag");
         let golfed = golf_shader(src);
-        assert_eq!(golfed.len(), 499, "expected byte count unchanged by this pass: {} bytes", golfed.len());
+        assert_eq!(golfed.len(), 1417, "expected byte count unchanged by this pass: {} bytes", golfed.len());
     }
 
     #[test]
@@ -4647,13 +4638,17 @@ mod ternary_tests {
 
     #[test]
     fn regression_default_frag_unaffected() {
-        // default.frag has no if/else at all (only a for-loop body) — a
-        // pure no-op, confirming this pass adds nothing to a shader
-        // without the pattern (byte count stays the 499 asserted by
-        // strip_redundant_braces_tests::regression_default_frag_unaffected).
+        // default.frag has no if/else at all (only two for-loop bodies,
+        // one per helper function) — a pure no-op, confirming this pass
+        // adds nothing to a shader without the pattern (byte count stays
+        // the 1417 asserted by
+        // strip_redundant_braces_tests::regression_default_frag_unaffected
+        // — see that test's comment for why it is 1417, not the older 499
+        // from before default.frag was rewritten into its current longer,
+        // heavily-commented form).
         let src = include_str!("../../python_ui/assets/shaders/default.frag");
         let golfed = golf_shader(src);
-        assert_eq!(golfed.len(), 499, "expected byte count unchanged by this pass: {} bytes", golfed.len());
+        assert_eq!(golfed.len(), 1417, "expected byte count unchanged by this pass: {} bytes", golfed.len());
     }
 }
 
@@ -4760,18 +4755,32 @@ mod vector_splat_tests {
     }
 
     #[test]
-    fn regression_default_frag_two_splats_folded() {
-        // palette()'s four vec3 constants: vec3(0.5,0.5,0.5) and
-        // vec3(1.0,1.0,1.0) are genuine splats once golfed (`.5`/`1.`);
-        // vec3(0.263,0.416,0.557) is built from three distinct components
-        // and must stay a no-op for this pass — see
-        // merge_declarations_tests::regression_default_frag_size_shrinks
-        // for the full byte-count regression.
+    fn regression_default_frag_no_splats_present() {
+        // Historical note: an earlier, much terser `default.frag` had a
+        // `palette()` function whose vec3(0.5,0.5,0.5) and
+        // vec3(1.0,1.0,1.0) constants were genuine splats once golfed
+        // (`.5`/`1.`), while a third, vec3(0.263,0.416,0.557), built from
+        // three distinct components, was the no-op case this pass must
+        // never touch (see this test's own git history / ROADMAP.md for
+        // that version). `default.frag` was since entirely rewritten into
+        // a longer, heavily-commented "raymarching fractal + glow
+        // volumétrique" study shader — verified for real once a working
+        // rustc/cargo toolchain became available in this environment,
+        // this new file's every vec3(...) call (five of them) is either
+        // already single-argument (`vec3(1.214)`, `vec3(0.)`) or built
+        // from distinct components (`vec3(c,r,0.)`, `vec3(S,T,U)`,
+        // `vec3(k*d,d)`), so this pass is now correctly a pure no-op on
+        // this specific file — the splat-folding mechanism itself remains
+        // covered by `wired_into_full_pipeline` just above, on a small
+        // self-contained fixture that does not depend on default.frag's
+        // current shape. This regression test's job is only to confirm
+        // the absence of a false positive on the real shipped shader, not
+        // to exercise the splat pattern itself.
         let src = include_str!("../../python_ui/assets/shaders/default.frag");
         let golfed = golf_shader(src);
-        assert_eq!(golfed.matches("vec3(.5)").count(), 2, "expected both vec3(0.5,0.5,0.5) constants folded to vec3(.5) in: {golfed}");
-        assert!(golfed.contains("vec3(1.)"), "expected vec3(1.0,1.0,1.0) folded to vec3(1.) in: {golfed}");
-        assert!(golfed.contains("vec3(.263,.416,.557)"), "expected the distinct-components vec3 left intact in: {golfed}");
+        assert_eq!(golfed.matches("vec3(.5)").count(), 0, "expected no vec3(.5) splat in the current default.frag: {golfed}");
+        assert_eq!(golfed.matches("vec3(1.)").count(), 0, "expected no vec3(1.) splat in the current default.frag: {golfed}");
+        assert_eq!(golfed.matches("vec3(").count(), 5, "expected exactly 5 vec3(...) calls, none of them a foldable splat, in: {golfed}");
     }
 }
 

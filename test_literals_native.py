@@ -15,6 +15,7 @@ with a clear message rather than failing noisily if it isn't, since a
 missing compiled extension is an environment issue, not a code
 regression.
 """
+import math
 import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python_ui"))
@@ -30,6 +31,17 @@ except ImportError as exc:
 def counts(sliders):
     floats, ints, bools, vecs = sliders
     return (len(floats), len(ints), len(bools), len(vecs))
+
+
+def close_list(actual, expected):
+    """Compare vec slider values with an approximate equality: the Rust
+    engine stores/returns `f32`, so e.g. 0.1 comes back as
+    0.10000000149011612 once widened to Python's `float` (f64) -- an exact
+    equality against the f64 literal is a test bug, not a detector bug
+    (see RM.md Priorite 0)."""
+    return len(actual) == len(expected) and all(
+        math.isclose(a, e, rel_tol=1e-6, abs_tol=1e-6) for a, e in zip(actual, expected)
+    )
 
 
 # ---- masking: comments, directives, for(...) header ------------------
@@ -58,17 +70,17 @@ assert r[0][0].value == 1.0
 
 r = engine_bridge.detect_all_sliders("vec3 col = vec3(0.1, 0.2, 0.3);\n")
 assert counts(r) == (0, 0, 0, 1), counts(r)
-assert list(r[3][0].values) == [0.1, 0.2, 0.3]
+assert close_list(list(r[3][0].values), [0.1, 0.2, 0.3])
 
 # The M1 regression (see AUDIT.md): previously fell through to 3 separate
 # floats instead of one grouped VecSlider.
 r = engine_bridge.detect_all_sliders("vec3 dir = vec3(-1.0, 0.5, 0.2);\n")
 assert counts(r) == (0, 0, 0, 1), counts(r)
-assert list(r[3][0].values) == [-1.0, 0.5, 0.2]
+assert close_list(list(r[3][0].values), [-1.0, 0.5, 0.2])
 
 r = engine_bridge.detect_all_sliders("vec2 off = vec2(-0.3, 0.4);\n")
 assert counts(r) == (0, 0, 0, 1), counts(r)
-assert list(r[3][0].values) == [-0.3, 0.4]
+assert close_list(list(r[3][0].values), [-0.3, 0.4])
 
 # ---- splat / expressions: deliberately NOT grouped ---------------------
 
@@ -110,7 +122,7 @@ n_floats, n_ints, n_bools, n_vecs = counts(r)
 # `exposure`'s 1.5 and the `1.0` splat argument of the (ungrouped, per m1
 # in AUDIT.md) vec4(...) call surface as 2 standalone floats.
 assert (n_floats, n_ints, n_bools, n_vecs) == (2, 0, 0, 1), (n_floats, n_ints, n_bools, n_vecs)
-assert list(r[3][0].values) == [-0.1, 0.4, 0.8]
+assert close_list(list(r[3][0].values), [-0.1, 0.4, 0.8])
 categories = {lit.category for lit in r[0]}  # floats
 assert categories == {"mainImage — Couleur"}, categories
 

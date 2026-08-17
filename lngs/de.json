@@ -85,11 +85,24 @@
     },
     "golf_options": {
       "title": "Code golfen",
-      "intro": "Golfen entfernt immer Kommentare, reduziert Leerraum und kürzt numerische Literale. Werte (und damit die automatisch erkannten Regler) bleiben unabhängig von den folgenden Einstellungen unverändert.",
+      "intro": "Einige Transformationen lassen sich unten einzeln ein- oder ausschalten; die übrigen werden immer angewendet und dienen nur zur Information.",
       "rename": "Bezeichner umbenennen (Variablen/Funktionen)",
       "dead_code": "Toten Code entfernen (nie verwendete Funktionen/Structs)",
       "algebra": "Algebraische Ausdrücke vereinfachen (x*0., x*1., x+0., ...)",
-      "algebra_tooltip": "Kann gelegentlich ungültigen Code bei Ausdrücken mit Member-Zugriff/Swizzle erzeugen (z. B. p.z*0.) — in diesem Fall wird der Golf automatisch zurückgesetzt (siehe Dialog „Golf abgebrochen“). Deaktivieren Sie diese Option, wenn das häufig vorkommt."
+      "algebra_tooltip": "Kann gelegentlich ungültigen Code bei Ausdrücken mit Member-Zugriff/Swizzle erzeugen (z. B. p.z*0.) — in diesem Fall wird der Golf automatisch zurückgesetzt (siehe Dialog „Golf abgebrochen“). Deaktivieren Sie diese Option, wenn das häufig vorkommt.",
+      "section_optional_title": "Optionale Transformationen",
+      "section_optional_desc": "Können unabhängig voneinander aktiviert werden, je nach Bedarf an Lesbarkeit oder Kompatibilität.",
+      "rename_desc": "Ersetzt jede Variable und Funktion durch einen ein- oder zweibuchstabigen Namen. Die aggressivste Transformation: der gegolfte Code wird unlesbar.",
+      "dead_code_desc": "Entfernt nie aufgerufene Funktionen und Structs und fügt genau einmal aufgerufene direkt ein.",
+      "algebra_desc": "Vereinfacht triviale Ausdrücke (x*0., x*1., x+0., pow(x,2.), doppelte Negation, ...).",
+      "section_always_title": "Immer angewendet",
+      "section_always_desc": "Diese Transformationen ändern nie das Verhalten des Shaders: Sie laufen immer, ohne Kontrollkästchen zum Deaktivieren.",
+      "always_cleanup_title": "Grundlegende Bereinigung",
+      "always_cleanup_desc": "Kommentare entfernt, überflüssiger Leerraum und redundante Semikolons gestrichen, numerische Literale gekürzt (0.50 → .5).",
+      "always_structure_title": "Syntaktische Vereinfachungen",
+      "always_structure_desc": "Implizites „in“-Qualifikator entfernt, for-Schleifen verdichtet, aufeinanderfolgende Deklarationen zusammengeführt, Klammern und Vektor-Konstruktoren vereinfacht, if/else wo möglich zu einem ternären Operator umgeschrieben.",
+      "always_macros_title": "Makro-Extraktion",
+      "always_macros_desc": "Wiederholte Teilausdrücke werden zu #define-Makros zusammengefasst, aber nur, wenn das die Dateigröße tatsächlich verringert."
     },
     "golf_common_confirm": {
       "title": "Code golfen",

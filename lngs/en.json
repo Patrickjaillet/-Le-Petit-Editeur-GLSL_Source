@@ -85,11 +85,24 @@
     },
     "golf_options": {
       "title": "Golf the code",
-      "intro": "Golfing always strips comments, collapses whitespace, and shortens numeric literals. Values (and therefore the auto-detected sliders) stay unchanged regardless of the settings below.",
+      "intro": "Some transforms can be toggled on or off below; the others always apply and are listed for information.",
       "rename": "Rename identifiers (variables/functions)",
       "dead_code": "Remove dead code (never-used functions/structs)",
       "algebra": "Simplify algebraic expressions (x*0., x*1., x+0., ...)",
-      "algebra_tooltip": "Can occasionally produce invalid code on expressions involving a member access/swizzle (e.g. p.z*0.) — in that case the golf is automatically rolled back (see the \"Golf cancelled\" dialog). Uncheck this if that happens to you often."
+      "algebra_tooltip": "Can occasionally produce invalid code on expressions involving a member access/swizzle (e.g. p.z*0.) — in that case the golf is automatically rolled back (see the \"Golf cancelled\" dialog). Uncheck this if that happens to you often.",
+      "section_optional_title": "Optional transforms",
+      "section_optional_desc": "Can be toggled independently, depending on your readability or compatibility needs.",
+      "rename_desc": "Replaces every variable and function with a one- or two-letter name. The most aggressive transform: the golfed code becomes unreadable.",
+      "dead_code_desc": "Removes functions and structs that are never called, and inlines the ones called exactly once.",
+      "algebra_desc": "Simplifies trivial expressions (x*0., x*1., x+0., pow(x,2.), double negation, ...).",
+      "section_always_title": "Always applied",
+      "section_always_desc": "These transforms never change the shader's behaviour: they always run, with no checkbox to disable them.",
+      "always_cleanup_title": "Basic cleanup",
+      "always_cleanup_desc": "Comments removed, extra whitespace and redundant semicolons stripped, numeric literals shortened (0.50 → .5).",
+      "always_structure_title": "Syntactic simplifications",
+      "always_structure_desc": "Implicit \"in\" qualifier dropped, for loops compacted, consecutive declarations merged, braces and vector constructors simplified, if/else rewritten as a ternary where possible.",
+      "always_macros_title": "Macro extraction",
+      "always_macros_desc": "Repeated subexpressions are factored into #define macros, but only when that actually shrinks the file."
     },
     "golf_common_confirm": {
       "title": "Golf the code",

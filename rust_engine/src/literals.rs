@@ -418,7 +418,26 @@ pub fn detect_all_sliders(src: &str) -> DetectedSliders {
                 });
             }
 
-            if depth == 0 && paren_stack.is_empty() {
+            // `pending_ident` only needs to stay unset while we're inside an
+            // *open* paren list (`paren_stack.is_empty()`) — that's what
+            // keeps a function's own name correct while scanning its
+            // parameter list (e.g. `mainImage(out vec4 fragColor, ...)`:
+            // `fragColor`/`fragCoord` never overwrite `pending_ident` because
+            // `paren_stack` isn't empty while inside `(...)`). There is no
+            // reason to *also* require `depth == 0`: the only other
+            // consumer, the `{` handler just below, already gates its own
+            // read of `pending_ident` on `depth == 0` by itself, so nothing
+            // downstream needs identifiers at `depth >= 1` to be ignored
+            // here. Requiring `depth == 0` used to silently break `for(...)`
+            // masking for the by-far-most-common case (a `for` loop written
+            // inside `mainImage` or any helper function, i.e. `depth >= 1`):
+            // `pending_ident` would never become `Some("for")` again once
+            // inside a function body, so the `(` handler's `is_for` check
+            // below always saw `false` and the loop header's own bounds
+            // leaked through as ordinary int/float sliders instead of being
+            // masked (previously a known bug, see the regression test
+            // `for_loop_header_inside_a_function_is_not_masked_known_bug`).
+            if paren_stack.is_empty() {
                 pending_ident = Some(name);
             }
             continue;
@@ -592,36 +611,37 @@ mod tests {
     }
 
     #[test]
-    fn for_loop_header_inside_a_function_is_not_masked_known_bug() {
-        // KNOWN BUG, newly surfaced by writing this very test suite (see
-        // M5 in AUDIT.md) -- kept here, asserting the actual current
-        // behavior rather than the intended one, precisely so a future fix
-        // shows up as this test needing to change instead of silently
-        // going untested again.
-        //
-        // `pending_ident` is only updated while `depth == 0 &&
-        // paren_stack.is_empty()` (see `detect_all_sliders`'s identifier
-        // branch), i.e. only for identifiers seen at *file* scope. Once
-        // execution is inside any function's `{}` (`depth >= 1` --
-        // essentially every real shader's `for` loop, always written
-        // inside `mainImage` or a helper function), `pending_ident` never
-        // gets updated to `"for"` again, so the `(` handler's `let is_for
-        // = pending_ident.as_deref() == Some("for")` check silently stays
-        // `false` and the loop header's own bounds leak through as
-        // ordinary int/float sliders instead of being masked.
+    fn for_loop_header_inside_a_function_is_masked() {
+        // Formerly a known bug (tracked as "M5" in AUDIT.md, which itself
+        // never got a dedicated write-up beyond a dangling cross-reference
+        // from M2) -- discovered while wiring up a real cargo/rustc
+        // toolchain for the first time and actually running this test
+        // suite as a whole crate instead of relexing `literals.rs` in
+        // isolation. `pending_ident` used to only update while
+        // `depth == 0 && paren_stack.is_empty()`, i.e. only for
+        // identifiers seen at *file* scope -- so a `for` keyword written
+        // inside any function's `{}` (`depth >= 1`, which is essentially
+        // every real shader's `for` loop: always inside `mainImage` or a
+        // helper function) never made `pending_ident` become
+        // `Some("for")` again, silently leaking the loop header's own
+        // bounds through as ordinary int/float sliders instead of masking
+        // them like the top-level case above. Fixed by dropping the
+        // `depth == 0` half of that condition -- `paren_stack.is_empty()`
+        // alone is what actually matters (it's what keeps a function's
+        // own name from being clobbered by its parameter names while
+        // scanning `(...)`), and nothing downstream needs identifiers at
+        // `depth >= 1` to be ignored on top of that.
         let src = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n\
                    for (int i = 0; i < 8; i++) {\n\
                        float a = 1.0;\n\
                    }\n\
                    }\n";
         let r = detect_all_sliders(src);
-        // Documents today's actual (buggy) output: `0` and `8` leak
-        // through as int sliders alongside the loop body's real `1.0`.
-        // Once M5 is fixed, this assertion should become `(1, 0, 0, 0)`
-        // like the top-level case above -- update it then, don't just
-        // delete the test.
-        assert_eq!(cat(&r), (1, 2, 0, 0), "if this now reads (1, 0, 0, 0), M5 is fixed -- update this test's comment/name accordingly: {:?}", r.ints);
-        assert_eq!(r.ints.iter().map(|x| x.value).collect::<Vec<_>>(), vec![0, 8]);
+        // Same shape as the top-level case: only the loop body's real
+        // `1.0` surfaces as a slider, the loop header's `0`/`8` bounds
+        // stay masked.
+        assert_eq!(cat(&r), (1, 0, 0, 0), "for(...) header literals must be masked even inside a function body: {:?}", r.floats);
+        assert_eq!(r.floats[0].value, 1.0);
     }
 
     // ---- unary minus vs. binary subtraction (top-level scanner) ------

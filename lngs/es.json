@@ -85,11 +85,24 @@
     },
     "golf_options": {
       "title": "Golfear el código",
-      "intro": "Golfear siempre elimina los comentarios, colapsa los espacios en blanco y acorta los literales numéricos. Los valores (y por lo tanto los deslizadores autodetectados) permanecen sin cambios independientemente de las opciones siguientes.",
+      "intro": "Algunas transformaciones se pueden activar o desactivar a continuación; las demás siempre se aplican y se enumeran a modo informativo.",
       "rename": "Renombrar identificadores (variables/funciones)",
       "dead_code": "Eliminar código muerto (funciones/estructuras nunca usadas)",
       "algebra": "Simplificar expresiones algebraicas (x*0., x*1., x+0., ...)",
-      "algebra_tooltip": "Ocasionalmente puede producir código inválido en expresiones que involucran un acceso a miembro/swizzle (p. ej. p.z*0.) — en ese caso, el golf se revierte automáticamente (ver el diálogo «Golf cancelado»). Desactive esta opción si le ocurre a menudo."
+      "algebra_tooltip": "Ocasionalmente puede producir código inválido en expresiones que involucran un acceso a miembro/swizzle (p. ej. p.z*0.) — en ese caso, el golf se revierte automáticamente (ver el diálogo «Golf cancelado»). Desactive esta opción si le ocurre a menudo.",
+      "section_optional_title": "Transformaciones opcionales",
+      "section_optional_desc": "Se pueden activar o desactivar de forma independiente, según sus necesidades de legibilidad o compatibilidad.",
+      "rename_desc": "Sustituye cada variable y función por un nombre de una o dos letras. La transformación más agresiva: el código golfeado se vuelve ilegible.",
+      "dead_code_desc": "Elimina funciones y estructuras que nunca se llaman, e integra directamente las que se llaman una sola vez.",
+      "algebra_desc": "Simplifica expresiones triviales (x*0., x*1., x+0., pow(x,2.), doble negación, ...).",
+      "section_always_title": "Siempre aplicado",
+      "section_always_desc": "Estas transformaciones nunca cambian el comportamiento del shader: se aplican siempre, sin casilla para desactivarlas.",
+      "always_cleanup_title": "Limpieza básica",
+      "always_cleanup_desc": "Se eliminan los comentarios, se reducen los espacios y los puntos y coma redundantes, y se acortan los literales numéricos (0.50 → .5).",
+      "always_structure_title": "Simplificaciones sintácticas",
+      "always_structure_desc": "Se elimina el calificador «in» implícito, se compactan los bucles for, se fusionan declaraciones consecutivas, se simplifican llaves y constructores de vectores, y los if/else se reescriben como operador ternario cuando es posible.",
+      "always_macros_title": "Extracción de macros",
+      "always_macros_desc": "Las subexpresiones repetidas se factorizan en macros #define, solo cuando eso reduce realmente el tamaño del archivo."
     },
     "golf_common_confirm": {
       "title": "Golfear el código",

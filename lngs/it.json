@@ -85,11 +85,24 @@
     },
     "golf_options": {
       "title": "Golfa il codice",
-      "intro": "Il golf rimuove sempre i commenti, comprime gli spazi bianchi e abbrevia i letterali numerici. I valori (e quindi gli slider rilevati automaticamente) restano invariati indipendentemente dalle impostazioni sottostanti.",
+      "intro": "Alcune trasformazioni possono essere attivate o disattivate qui sotto; le altre vengono sempre applicate e sono elencate a titolo informativo.",
       "rename": "Rinomina identificatori (variabili/funzioni)",
       "dead_code": "Rimuovi codice morto (funzioni/struct mai usate)",
       "algebra": "Semplifica le espressioni algebriche (x*0., x*1., x+0., ...)",
-      "algebra_tooltip": "Può occasionalmente produrre codice non valido in espressioni che coinvolgono un accesso a membro/swizzle (es. p.z*0.) — in tal caso il golf viene annullato automaticamente (vedi la finestra di dialogo «Golf annullato»). Deseleziona questa opzione se ti capita spesso."
+      "algebra_tooltip": "Può occasionalmente produrre codice non valido in espressioni che coinvolgono un accesso a membro/swizzle (es. p.z*0.) — in tal caso il golf viene annullato automaticamente (vedi la finestra di dialogo «Golf annullato»). Deseleziona questa opzione se ti capita spesso.",
+      "section_optional_title": "Trasformazioni opzionali",
+      "section_optional_desc": "Attivabili o disattivabili in modo indipendente, in base alle esigenze di leggibilità o compatibilità.",
+      "rename_desc": "Sostituisce ogni variabile e funzione con un nome di una o due lettere. La trasformazione più aggressiva: il codice golfato diventa illeggibile.",
+      "dead_code_desc": "Rimuove funzioni e struct mai chiamate e integra direttamente quelle chiamate una sola volta.",
+      "algebra_desc": "Semplifica espressioni banali (x*0., x*1., x+0., pow(x,2.), doppia negazione, ...).",
+      "section_always_title": "Sempre applicato",
+      "section_always_desc": "Queste trasformazioni non cambiano mai il comportamento dello shader: vengono applicate sempre, senza casella di spunta.",
+      "always_cleanup_title": "Pulizia di base",
+      "always_cleanup_desc": "Commenti rimossi, spazi superflui e punti e virgola ridondanti eliminati, letterali numerici abbreviati (0.50 → .5).",
+      "always_structure_title": "Semplificazioni sintattiche",
+      "always_structure_desc": "Qualificatore «in» implicito rimosso, cicli for compattati, dichiarazioni consecutive unite, parentesi graffe e costruttori di vettori semplificati, if/else riscritti come operatore ternario quando possibile.",
+      "always_macros_title": "Estrazione di macro",
+      "always_macros_desc": "Le sottoespressioni ripetute vengono fattorizzate in macro #define, solo quando ciò riduce effettivamente la dimensione del file."
     },
     "golf_common_confirm": {
       "title": "Golfa il codice",

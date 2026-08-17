@@ -1420,16 +1420,6 @@ projet), contrairement au preview temps réel.
   projet.json sortie.mp4 --duration 10 --fps 30 --crf 23 [--width 1920 --height 1080]`, headless
   (charge le projet `.json`, construit l'`Engine` hors GUI, capture, encode). Utile pour générer des
   aperçus vidéo en lot (plusieurs shaders d'un dossier) sans ouvrir l'interface à chaque fois.
-- [ ] **Non prévu pour l'instant** : export GIF (palette de couleurs bien plus limitée, moins
-  pertinent pour du rendu procédural riche en dégradés — ffmpeg peut déjà produire un GIF depuis la
-  même séquence PNG le jour où ce sera demandé, sans changement de pipeline), enregistrement en
-  direct pendant la lecture temps réel (l'approche "rendu déterministe puis encodage" ci-dessus
-  donne un résultat reproductible, contrairement à un enregistrement live qui dépendrait de la
-  vitesse GPU de la machine), et pipe direct `ffmpeg` en entrée standard (recevoir les frames sur
-  `stdin` en `rawvideo` plutôt que de passer par des fichiers PNG intermédiaires irait plus vite et
-  économiserait de l'espace disque, mais l'énoncé demande explicitement le système fichier par
-  fichier qui se recolle à la fin — piste d'optimisation possible plus tard si l'export de longues
-  séquences en haute résolution s'avère trop lent en pratique).
 
 ---
 
@@ -1664,11 +1654,6 @@ langue chargés au démarrage, pour permettre d'ajouter d'autres langues sans to
   changée en une clé inexistante dans `main_window.py` → détecté ; fichiers restaurés ensuite) en
   plus des 3 passes normales ; `test_i18n.py` et `test_i18n_completeness.py` passent tous les deux,
   `python3 -m py_compile` sur `i18n.py`/`main_window.py`/`main.py` sans erreur.
-- [ ] **Non prévu pour l'instant** : pluralisation façon ICU/gettext (`ngettext`) — l'app n'a pour
-  l'instant qu'une poignée de messages avec un compteur (ex. « N pass(es) golfées »), déjà gérés à
-  la main avec un `(es)` générique plutôt qu'une vraie règle de pluriel par langue ; RTL (arabe,
-  hébreu) — aucune langue RTL prévue dans `lngs/` pour l'instant, la mise en page Qt actuelle
-  (menus/toolbar/panneaux à gauche) n'a pas été pensée pour un miroir RTL automatique.
 
 ---
 

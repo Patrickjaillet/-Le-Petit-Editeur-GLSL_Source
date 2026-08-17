@@ -1,6 +1,8 @@
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python_ui"))
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
+import i18n
+i18n.load_language(i18n.FALLBACK_LANGUAGE_CODE)
 
 from PySide6.QtWidgets import QApplication
 from ui.sliders_panel import SlidersPanel

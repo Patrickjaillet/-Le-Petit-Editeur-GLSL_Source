@@ -8,12 +8,24 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QLabel, QStatusBar, QWidget
 
+import engine_bridge
 from i18n import tr
 
 FRAME_GRAPH_SAMPLES = 90
 FRAME_GRAPH_WIDTH = 120
 FRAME_GRAPH_HEIGHT = 22
 FRAME_GRAPH_MAX_MS = 33.0  # ~30 fps floor; bars clip above this
+
+# Icône + couleur + clé i18n du libellé par id de dialecte (voir
+# `engine_bridge.DIALECT_SHADERTOY`/`DIALECT_GLSL`), pour un repérage
+# instantané au premier coup d'oeil sans avoir à lire le texte. Une entrée
+# par dialecte reconnu par le moteur — un futur langage ajouté côté Rust
+# (voir roadmap1.md, "Architecture extensible pour de futurs langages")
+# n'a qu'à ajouter sa propre entrée ici, pas à modifier `set_dialect`.
+_DIALECT_DISPLAY = {
+    engine_bridge.DIALECT_SHADERTOY: ("🌈", "#64b5f6", "footer.dialect_shadertoy"),
+    engine_bridge.DIALECT_GLSL: ("📄", "#ffb74d", "footer.dialect_glsl"),
+}
 
 # Traditional demoscene compo size classes (4k/8k), checked against the
 # *golfed* byte count (not gzip) since that's the figure the golf score is
@@ -81,10 +93,12 @@ class Footer(QStatusBar):
         self._fps_label = QLabel(tr("footer.fps", fps="--"))
         self._status_label = QLabel(tr("footer.ready"))
         self._size_label = QLabel("")
+        self._dialect_label = QLabel("")
         self._frame_graph = FrameTimeGraph()
 
         self.addWidget(self._status_label, 1)
         self.addPermanentWidget(self._size_label)
+        self.addPermanentWidget(self._dialect_label)
         self.addPermanentWidget(self._frame_graph)
         self.addPermanentWidget(self._fps_label)
 
@@ -103,6 +117,37 @@ class Footer(QStatusBar):
         first_line = message.strip().splitlines()[0] if message.strip() else message
         self._status_label.setText(tr("footer.compile_error", message=first_line))
         self._status_label.setToolTip(message)
+
+    def set_dialect(self, dialect_id: str, signal_i18n_key: str) -> None:
+        """Affiche le mode détecté (`engine_bridge.DIALECT_SHADERTOY`/
+        `DIALECT_GLSL`) avec une icône/couleur distincte par dialecte.
+        `signal_i18n_key` (une des clés `footer.dialect_signal_*` — voir
+        `dialect::DialectSignal::i18n_key` côté Rust) alimente le tooltip
+        au survol, pour que le mode affiché ne soit jamais une boîte noire
+        si l'utilisateur ne comprend pas pourquoi son code est classé
+        d'une façon ou d'une autre. Un id de dialecte inconnu (futur
+        langage pas encore doté d'un affichage dédié, voir
+        `_DIALECT_DISPLAY`) retombe silencieusement sur `clear_dialect()`
+        plutôt que de planter le footer.
+        """
+        display = _DIALECT_DISPLAY.get(dialect_id)
+        if display is None:
+            self.clear_dialect()
+            return
+        icon, color, label_key = display
+        self._dialect_label.setStyleSheet(f"color: {color}; font-weight: bold;")
+        self._dialect_label.setText(f"{icon} {tr(label_key)}")
+        self._dialect_label.setToolTip(tr(
+            "footer.dialect_tooltip", mode=tr(label_key), signal=tr(signal_i18n_key)
+        ))
+
+    def clear_dialect(self) -> None:
+        """État neutre avant toute compilation (tout premier affichage) —
+        un label vide plutôt qu'un mode par défaut trompeur, cohérent avec
+        `footer.ready` déjà utilisé pour le statut de compilation avant la
+        première frame."""
+        self._dialect_label.setText("")
+        self._dialect_label.setToolTip("")
 
     def set_golf_sizes(self, before_text: str, after_text: str) -> None:
         if not before_text:

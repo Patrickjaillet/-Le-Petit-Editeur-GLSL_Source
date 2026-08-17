@@ -85,24 +85,38 @@ def capture_frames(
     `Engine.render()` pipelines its GPU→CPU readback one frame behind
     (`renderer.rs::resolve_readback`): each call submits the frame for the
     parameters just passed in, but *returns* the pixels of the
-    *previous* call's parameters (or an all-zero bootstrap frame, the very
-    first time). That one-frame latency is invisible in a live preview —
-    nobody notices the on-screen image lagging the wall clock by ~16ms —
-    but it would be wrong here: naively pairing call `i`'s *return value*
-    with call `i`'s *own* `iTime`/`iFrame` would silently save frame `i`'s
-    pixels under frame `i-1`'s buffer-feedback state (or vice versa),
-    shifting every multi-pass feedback effect by a frame against the
-    animation clock actually used to render it.
+    *previous* call's parameters. That one-frame latency is invisible in
+    a live preview — nobody notices the on-screen image lagging the wall
+    clock by ~16ms — but it would be wrong here: naively pairing call
+    `i`'s *return value* with call `i`'s *own* `iTime`/`iFrame` would
+    silently save frame `i`'s pixels under frame `i-1`'s buffer-feedback
+    state (or vice versa), shifting every multi-pass feedback effect by a
+    frame against the animation clock actually used to render it.
 
     Rather than adding a blocking render mode on the Rust side, this
     renders `n_frames + 1` frames and discards the very first return
-    value (the bootstrap frame, which corresponds to no real submitted
-    frame): call `i` submits logical frame `i`'s parameters and its
+    value: call `i` submits logical frame `i`'s parameters and its
     *return value* is logical frame `i - 1`'s actual pixels, so after
     the loop finishes, saved frame `k` (for `k` in `0 .. n_frames - 1`)
     holds exactly the pixels rendered from `iTime = k / fps`,
     `iFrame = k` — pixel-identical to what a hypothetical blocking
     `render_blocking(k / fps, ...)` would have returned directly.
+
+    Note (RM.md, Priorité 1): since the `renderer.rs` fix for the
+    "first `render()` returns an all-zero buffer" bug, `Engine::render`
+    no longer has a real all-zero bootstrap frame — on the very first
+    call after `Engine::new`/`compile_pass` (or after a `resize()`), it
+    internally issues one extra "warm-up" submission with the *exact
+    same* parameters as the real call before submitting the real one, so
+    its return value is actually frame 0's own pixels twice over rather
+    than zeroes. This loop still discards that first return value
+    unconditionally (`i == 0: continue`) — which remains correct, not
+    wasteful-but-buggy: frame 0 is still captured intact from call `i=1`'s
+    return value (the second, "real" submission queued during call 0),
+    via the same one-call-behind pipelining that holds for every other
+    frame. Traced through the current `renderer.rs` source rather than
+    re-verified against a real export run in this environment (no GPU
+    export was re-executed here) — see RM.md for that remaining gap.
 
     `should_cancel`, if given, is polled once per iteration (before each
     `render()` call); the instant it returns `True`, `ExportCancelled` is
@@ -133,10 +147,12 @@ def capture_frames(
         time = i / fps
         pixels = engine.render(time, time_delta, mouse, i, date)
         if i == 0:
-            # This return value is the all-zero bootstrap frame from
-            # before any real frame was submitted, not logical frame 0's
-            # actual pixels — discarded to absorb the one-frame readback
-            # offset (see docstring above).
+            # Discarded to absorb the one-frame readback offset (see
+            # docstring above): this return value is a duplicate of
+            # logical frame 0's own pixels (the engine's internal
+            # warm-up submission on its very first call), not frame 0
+            # itself as saved by this loop — frame 0 is captured
+            # correctly from the *next* call's return value instead.
             continue
 
         saved_frame_index = i - 1
