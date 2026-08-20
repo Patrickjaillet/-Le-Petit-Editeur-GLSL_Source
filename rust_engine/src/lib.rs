@@ -1,3 +1,5 @@
+mod beautify;
+mod ctor_fixup;
 mod dialect;
 mod golf;
 mod literals;
@@ -142,6 +144,14 @@ impl Engine {
         self.inner.compile_pass(pass, source).map_err(to_py_err)
     }
 
+    /// RM10.md section 4 : désactive proprement une passe déjà compilée
+    /// (typiquement un Buffer vidé par l'utilisateur) — voir
+    /// `renderer::Engine::clear_pass` pour la garantie exacte (plus aucun
+    /// coût de rendu résiduel une fois appelé).
+    fn clear_pass(&mut self, pass: usize) -> PyResult<()> {
+        self.inner.clear_pass(pass).map_err(to_py_err)
+    }
+
     fn set_ichannel_texture(&mut self, pass: usize, index: u32, path: &str) -> PyResult<()> {
         self.inner.set_ichannel_texture(pass, index, path).map_err(to_py_err)
     }
@@ -149,9 +159,14 @@ impl Engine {
     /// Points a pass's iChannel slot at a built-in procedural texture
     /// preset (`"checker"`, `"white_noise"`, `"value_noise"`) generated on
     /// the CPU and uploaded once — no image file needed, matching
-    /// Shadertoy's own preset texture picker.
-    fn set_ichannel_procedural(&mut self, pass: usize, index: u32, kind: &str) -> PyResult<()> {
-        self.inner.set_ichannel_procedural(pass, index, kind).map_err(to_py_err)
+    /// Shadertoy's own preset texture picker. RM10.md section 5: `scale`
+    /// (pattern size) and `seed` default to the values this feature always
+    /// used before they became adjustable (`0` for `seed` means "this
+    /// preset's own default", not literally seed 0 -- see
+    /// `texture::ChannelTexture::procedural`).
+    #[pyo3(signature = (pass, index, kind, scale=8, seed=0))]
+    fn set_ichannel_procedural(&mut self, pass: usize, index: u32, kind: &str, scale: u32, seed: u32) -> PyResult<()> {
+        self.inner.set_ichannel_procedural(pass, index, kind, scale, seed).map_err(to_py_err)
     }
 
     /// Points a pass's iChannel slot at one of the 4 Buffer render targets
@@ -261,8 +276,41 @@ impl Engine {
 
     /// Reallocates the output/buffer textures at a new resolution (e.g.
     /// the viewport widget was resized). Buffer contents are reset.
-    fn resize(&mut self, width: u32, height: u32) {
-        self.inner.resize(width, height);
+    /// RM10.md section 1, item 8: raises a plain `RuntimeError` (rather
+    /// than letting a too-large allocation panic) if the GPU doesn't have
+    /// enough memory for the new resolution -- the engine is left at its
+    /// previous, still-working resolution in that case.
+    fn resize(&mut self, width: u32, height: u32) -> PyResult<()> {
+        self.inner.resize(width, height).map_err(to_py_err)
+    }
+
+    /// RM10.md section 1, item 8: the real, adapter-reported maximum
+    /// texture width/height on this machine's GPU -- the Python side
+    /// (`video_export.py`) checks a requested export resolution against
+    /// this before calling `resize`, rather than letting an oversized
+    /// request reach `wgpu` and panic on a validation error.
+    fn max_texture_dimension(&self) -> u32 {
+        self.inner.max_texture_dimension()
+    }
+
+    /// Exporte un pass déjà compilé avec succès (RMLG.md, section
+    /// "2. HLSL & MSL — cibles d'export") vers du texte HLSL ou MSL.
+    /// `target` doit être `"hlsl"` ou `"msl"` -- toute autre valeur est un
+    /// `PyValueError`. Réutilise le dernier code source/dialecte connu
+    /// pour ce pass (voir `renderer::Engine::export_shader_as`) : erreur
+    /// explicite si ce pass n'a pas encore compilé avec succès au moins
+    /// une fois, plutôt qu'un export vide ou obsolète.
+    fn export_shader_as(&self, pass: usize, target: &str) -> PyResult<String> {
+        let target = match target {
+            "hlsl" => shader::ExportTarget::Hlsl,
+            "msl" => shader::ExportTarget::Msl,
+            other => {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "target invalide: {other:?} (attendu \"hlsl\" ou \"msl\")"
+                )))
+            }
+        };
+        self.inner.export_shader_as(pass, target).map_err(to_py_err)
     }
 
     /// Renders one frame (all compiled Buffer passes, in order, then the
@@ -404,6 +452,17 @@ fn golf_shader_ex(source: &str, common_source: &str, rename: bool, dead_code: bo
     golf::golf_shader_ex(source, common_source, rename, dead_code, algebra)
 }
 
+/// "Dé-golf": reformats `source` into indented, readable GLSL (own line per
+/// statement, spaced operators, `for(...)` headers kept on one line) without
+/// changing what it compiles to -- see `beautify::beautify_shader`'s module
+/// doc comment for the exact guarantee. The counterpart to `golf_shader_ex`,
+/// though not its exact inverse: golfing that renamed identifiers or
+/// inlined/removed code cannot be recovered by reformatting alone.
+#[pyfunction]
+fn beautify_shader(source: &str) -> String {
+    beautify::beautify_shader(source)
+}
+
 #[pymodule]
 fn shadertoy_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Engine>()?;
@@ -417,11 +476,13 @@ fn shadertoy_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(golf_common, m)?)?;
     m.add_function(wrap_pyfunction!(golf_shader_with_common, m)?)?;
     m.add_function(wrap_pyfunction!(golf_shader_ex, m)?)?;
+    m.add_function(wrap_pyfunction!(beautify_shader, m)?)?;
     m.add_function(wrap_pyfunction!(fragment_header_line_count, m)?)?;
     m.add_function(wrap_pyfunction!(fragment_header_line_count_for_dialect, m)?)?;
     m.add_function(wrap_pyfunction!(detect_dialect, m)?)?;
     m.add("DIALECT_SHADERTOY", dialect::ShaderDialect::Shadertoy.id())?;
     m.add("DIALECT_GLSL", dialect::ShaderDialect::GlslStandalone.id())?;
+    m.add("DIALECT_WGSL", dialect::ShaderDialect::Wgsl.id())?;
     m.add("PASS_BUFFER_A", renderer::PASS_BUFFER_A)?;
     m.add("PASS_BUFFER_B", renderer::PASS_BUFFER_B)?;
     m.add("PASS_BUFFER_C", renderer::PASS_BUFFER_C)?;

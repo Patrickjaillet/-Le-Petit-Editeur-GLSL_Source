@@ -232,6 +232,15 @@ pub struct Engine {
     queue: wgpu::Queue,
     width: u32,
     height: u32,
+    /// `adapter.limits().max_texture_dimension_2d`, i.e. the *actual*
+    /// per-axis texture size this specific machine's GPU/driver supports —
+    /// see `Engine::new`'s comment on why `required_limits` is requested
+    /// from the adapter rather than `wgpu::Limits::downlevel_defaults()`.
+    /// Exposed to Python (`lib.rs::Engine::max_texture_dimension`) so a
+    /// resolution the UI is about to ask for (video export, RM10.md
+    /// section 1 item 8) can be checked *before* it reaches `wgpu` and
+    /// panics on a validation error instead of returning a `Result`.
+    max_texture_dimension: u32,
 
     output_texture: wgpu::Texture,
     output_view: wgpu::TextureView,
@@ -319,15 +328,38 @@ impl Engine {
         }))
         .ok_or("aucun adaptateur graphique wgpu disponible")?;
 
+        // `wgpu::Limits::downlevel_defaults()` was the previous value here —
+        // a WebGL2-compatible profile that caps `max_texture_dimension_2d`
+        // at 2048 regardless of what the real adapter actually supports.
+        // That silently broke every export/texture above 2048px on *any*
+        // machine (verified: `Engine::new(20000, 20000)` panics inside
+        // `wgpu`'s validation with "Dimension X value 20000 exceeds the
+        // limit of 2048" even on a modern desktop GPU) despite
+        // `export_video_dialog.py` already advertising resolutions up to
+        // 7680 (8K). Requesting the adapter's own reported limits instead
+        // is always satisfiable (that's what "the adapter reports" means)
+        // and gives this native desktop app the GPU's actual capability
+        // rather than an artificially conservative one.
+        let adapter_limits = adapter.limits();
         let (device, queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: Some("shadertoy-device"),
                 required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
+                required_limits: adapter_limits.clone(),
             },
             None,
         ))
         .map_err(|e| format!("impossible de créer le device wgpu: {e}"))?;
+        let max_texture_dimension = adapter_limits.max_texture_dimension_2d;
+
+        // Same reasoning/mechanism as `Engine::resize`'s doc comment: the
+        // *initial* resolution (Python's `Engine(width, height)`, e.g. the
+        // headless `--export-mp4` CLI's `--width`/`--height`) is just as
+        // capable of exceeding available VRAM as a later `resize()` call,
+        // and needs the same error-scope capture instead of letting a
+        // too-large allocation panic during construction.
+        device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
 
         let (output_texture, output_view) = create_output_texture(&device, width, height);
 
@@ -337,6 +369,14 @@ impl Engine {
             PingPongTarget::new(&device, &queue, width, height),
             PingPongTarget::new(&device, &queue, width, height),
         ];
+
+        let validation_err = pollster::block_on(device.pop_error_scope());
+        let oom_err = pollster::block_on(device.pop_error_scope());
+        if let Some(e) = validation_err.or(oom_err) {
+            return Err(format!(
+                "impossible d'initialiser le moteur à {width}x{height} : mémoire graphique insuffisante ({e})"
+            ));
+        }
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("default-sampler"),
@@ -363,6 +403,7 @@ impl Engine {
             queue,
             width,
             height,
+            max_texture_dimension,
             output_texture,
             output_view,
             buffers,
@@ -384,16 +425,64 @@ impl Engine {
         })
     }
 
+    /// RM10.md section 1, item 8: the real, adapter-reported per-axis
+    /// texture size limit on this machine (see `Engine::new`) -- callers
+    /// (Python, `lib.rs::Engine::max_texture_dimension`) should validate a
+    /// requested resolution against this *before* calling `resize`/
+    /// `set_ichannel_texture`/etc. with it, rather than letting an
+    /// oversized request reach `wgpu` and panic on a validation error.
+    pub fn max_texture_dimension(&self) -> u32 {
+        self.max_texture_dimension
+    }
+
     /// Reallocates the output texture and all 4 buffer ping-pong targets
     /// at a new resolution (e.g. the viewport widget was resized).
     /// Compiled pipelines stay valid (the pixel format doesn't change);
     /// buffer contents are cleared to transparent black, same as at
     /// startup, since the old contents don't have a meaningful resized
     /// equivalent.
-    pub fn resize(&mut self, width: u32, height: u32) {
+    /// RM10.md section 1, item 8. A resolution can be within
+    /// `max_texture_dimension()` (an adapter-reported *per-axis* limit,
+    /// see `Engine::new`) and still exceed available VRAM once the actual
+    /// bytes are allocated -- verified: `resize(20000, 20000)` on a real
+    /// desktop GPU here fails with wgpu's own "Not enough memory left" in
+    /// `Queue::write_texture`, *not* a dimension-limit validation error,
+    /// despite 20000 being under this machine's reported
+    /// `max_texture_dimension_2d` (32768). Without the error-scope pair
+    /// below, that error has no registered handler and reaches wgpu's
+    /// default *panicking* uncaptured-error handler instead of coming back
+    /// as a normal `Result` -- confirmed by reproducing the panic before
+    /// this fix. `push_error_scope`/`pop_error_scope` intercept exactly
+    /// that: while a scope is active, a matching error is captured instead
+    /// of reaching the uncaptured handler.
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), String> {
         if width == self.width && height == self.height {
-            return;
+            return Ok(());
         }
+        self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let (output_texture, output_view) = create_output_texture(&self.device, width, height);
+        let buffers = [
+            PingPongTarget::new(&self.device, &self.queue, width, height),
+            PingPongTarget::new(&self.device, &self.queue, width, height),
+            PingPongTarget::new(&self.device, &self.queue, width, height),
+            PingPongTarget::new(&self.device, &self.queue, width, height),
+        ];
+        // Popped in reverse push order (LIFO, as `wgpu` requires): the
+        // narrower `Validation` scope first, then `OutOfMemory`. Either
+        // one finding an error is reported the same way to the caller --
+        // the distinction only matters to `wgpu` internally.
+        let validation_err = pollster::block_on(self.device.pop_error_scope());
+        let oom_err = pollster::block_on(self.device.pop_error_scope());
+        if let Some(e) = validation_err.or(oom_err) {
+            return Err(format!(
+                "impossible de redimensionner à {width}x{height} : mémoire graphique insuffisante ({e})"
+            ));
+        }
+        // Only committed once the allocation above is confirmed to have
+        // actually succeeded -- on error, `self` is left exactly as it was
+        // before this call (still at the old, working resolution) rather
+        // than half-updated.
         self.width = width;
         self.height = height;
         // Any in-flight readback was sized for the old resolution; its
@@ -401,19 +490,51 @@ impl Engine {
         // whose viewport size the caller has already discarded, so it must
         // never be resolved.
         self.pending_readback = None;
-        let (output_texture, output_view) = create_output_texture(&self.device, width, height);
         self.output_texture = output_texture;
         self.output_view = output_view;
-        self.buffers = [
-            PingPongTarget::new(&self.device, &self.queue, width, height),
-            PingPongTarget::new(&self.device, &self.queue, width, height),
-            PingPongTarget::new(&self.device, &self.queue, width, height),
-            PingPongTarget::new(&self.device, &self.queue, width, height),
-        ];
+        self.buffers = buffers;
+        Ok(())
     }
 
     pub fn set_common(&mut self, source: &str) {
         self.common_src = source.to_string();
+    }
+
+    /// RM10.md section 4 : vide/désactive proprement un onglet de passe —
+    /// en pratique un Buffer A-D jamais réellement utilisé par le
+    /// projet, que l'appelant Python vient de réduire à une source vide
+    /// (voir `main_window.py::_compile_one_pass`, qui appelle ceci plutôt
+    /// que de simplement ne plus recompiler). Avant l'ajout de cette
+    /// méthode, il n'existait aucun moyen de faire redescendre
+    /// `self.pipelines[pass]` à `None` une fois une compilation réussie :
+    /// vider le texte de l'éditeur arrêtait bien les recompilations
+    /// (`_compile_one_pass` sort tôt sur une source vide), mais le
+    /// *dernier* pipeline compilé avec succès restait indéfiniment actif
+    /// et continuait d'être rendu à chaque frame dans `submit_frame` —
+    /// un Buffer qu'on croyait avoir « vidé » continuait donc de coûter
+    /// du temps de rendu, exactement ce que cet item interdit. Une fois
+    /// `self.pipelines[pass]` remis à `None`, `submit_frame` retrouve son
+    /// comportement normal pour une passe jamais compilée : la boucle
+    /// `if self.pipelines[buf_idx].is_none() { continue; }` la saute
+    /// entièrement, sans aucun coût de rendu résiduel. Le contenu de sa
+    /// texture de lecture (visible par toute autre passe qui la
+    /// référence encore via `iChannel`) reste figé sur sa dernière image
+    /// rendue plutôt que d'être effacé — un choix délibéré : disparaître
+    /// brutalement au premier flip serait plus surprenant qu'utile pour
+    /// une passe qu'on est peut-être seulement en train de retravailler.
+    ///
+    /// N'importe quel `pass` valide est accepté (pas seulement les
+    /// buffers) : `render()` gère déjà proprement `PASS_IMAGE` sans
+    /// pipeline (`"aucun shader compilé avec succès pour le moment"`,
+    /// une `Err` normale, jamais un panic) si un appelant choisissait un
+    /// jour de vider Image aussi.
+    pub fn clear_pass(&mut self, pass: usize) -> Result<(), String> {
+        if pass >= NUM_PASSES {
+            return Err(format!("pass invalide: {pass}"));
+        }
+        self.pipelines[pass] = None;
+        self.pass_dialects[pass] = None;
+        Ok(())
     }
 
     /// Compiles one pass (`PASS_BUFFER_A`..`PASS_BUFFER_D` or `PASS_IMAGE`).
@@ -465,6 +586,56 @@ impl Engine {
         let backend = shader::compile_backend_for(detection.dialect);
         let (fragment_src, custom_uniforms) = backend(&combined, channel_kinds, pass == PASS_IMAGE);
 
+        // RMLG.md, section 1.3/1.5 : `wgpu::ShaderSource::Wgsl` existe
+        // depuis toujours comme variante de cet enum (`wgpu::ShaderSource`)
+        // à côté de `::Glsl`, mais rien ici ne branchait jamais dessus tant
+        // qu'aucun test ne soumettait *réellement* un pass WGSL au device
+        // -- `cargo test --lib` ne l'aurait jamais détecté, ces tests
+        // n'exerçant que la génération de texte de `shader.rs`, jamais
+        // `Engine::compile_pass` lui-même. Trouvé et corrigé en écrivant
+        // le scénario de rendu réel de la section 1.5
+        // (`test_dialect_detection.py`, scénario 4) : sans ce branchement,
+        // tout code WGSL passthrough (texte par ailleurs correct) était
+        // soumis au frontend `naga` **GLSL**, qui échoue immédiatement sur
+        // `@fragment` (`UnexpectedCharacter`) -- une regression que
+        // `compile_backends_cover_every_known_dialect`/les tests texte de
+        // `shader::wgsl_tests` ne pouvaient pas voir puisqu'aucun des deux
+        // n'appelle jamais `device.create_shader_module`.
+        let fragment_source = if detection.dialect == ShaderDialect::Wgsl {
+            wgpu::ShaderSource::Wgsl(fragment_src.clone().into())
+        } else {
+            // GLSL only (never WGSL, whose constructors have no such
+            // "extra arguments ignored" rule to begin with): rewrites a
+            // handful of `matN(...)` constructor calls naga's GLSL
+            // frontend can't parse despite being legal GLSL -- see
+            // `ctor_fixup`'s module docs for the exact hazard and why
+            // this is safe to apply unconditionally here.
+            let fixed_src = crate::ctor_fixup::fixup_overloaded_matrix_constructors(&fragment_src);
+            wgpu::ShaderSource::Glsl {
+                shader: fixed_src.into(),
+                stage: wgpu::naga::ShaderStage::Fragment,
+                defines: Default::default(),
+            }
+        };
+        // Même remarque pour le nom du point d'entrée : le harness GLSL
+        // (Shadertoy/standalone) construit toujours lui-même un
+        // `void main()` fixe (voir `shader::build_fragment_source*`), mais
+        // WGSL passthrough ne réécrit jamais le code utilisateur -- son
+        // point d'entrée réel peut porter n'importe quel nom (voir
+        // `dialect::wgsl_fragment_entry_point_name`, déjà présente et
+        // testée côté Rust, mais jamais encore appelée depuis ici avant ce
+        // correctif). Un `unwrap_or("main")` reste un filet de sécurité
+        // raisonnable : ne devrait jamais être pris pour un pass dont le
+        // dialecte détecté est déjà `Wgsl`, `matches_wgsl_entry_point`
+        // (dialect.rs) cherchant exactement le même motif que cette
+        // fonction pour classer le dialecte en premier lieu.
+        let fragment_entry_point: String = if detection.dialect == ShaderDialect::Wgsl {
+            let stripped_fragment = dialect::strip_comments(&fragment_src);
+            dialect::wgsl_fragment_entry_point_name(&stripped_fragment).unwrap_or_else(|| "main".to_string())
+        } else {
+            "main".to_string()
+        };
+
         self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let vertex_module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("fullscreen-vertex"),
@@ -476,15 +647,11 @@ impl Engine {
         });
         let fragment_module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("user-fragment"),
-            source: wgpu::ShaderSource::Glsl {
-                shader: fragment_src.clone().into(),
-                stage: wgpu::naga::ShaderStage::Fragment,
-                defines: Default::default(),
-            },
+            source: fragment_source,
         });
         let error = pollster::block_on(self.device.pop_error_scope());
         if let Some(err) = error {
-            return Err(format!("erreur de compilation GLSL:\n{err}"));
+            return Err(format!("erreur de compilation du shader:\n{err}"));
         }
 
         // Rebuilt every compile (cheap: a handful of descriptor structs,
@@ -547,7 +714,7 @@ impl Engine {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &fragment_module,
-                entry_point: "main",
+                entry_point: &fragment_entry_point,
                 targets: &[Some(wgpu::ColorTargetState {
                     format: target_format,
                     blend: None,
@@ -593,6 +760,37 @@ impl Engine {
         self.pass_sources[pass] = Some(user_src.to_string());
         self.custom_uniform_buffers[pass] = custom_buffers;
         Ok(())
+    }
+
+    /// Exporte un pass déjà compilé avec succès vers du texte HLSL ou MSL
+    /// (RMLG.md, section "2. HLSL & MSL — cibles d'export", 2.2). Réutilise
+    /// exactement les mêmes ingrédients que le dernier `compile_pass`
+    /// réussi pour ce pass -- `common_src` + `pass_sources[pass]` (même
+    /// concaténation qu'en tête de `compile_pass`), le dialecte détecté
+    /// alors (`pass_dialects[pass]`), et les `ChannelKind` actuels de ses
+    /// iChannel0-3 (`channels[pass]`, via `channel_kind`) -- c'est-à-dire
+    /// exactement ce que `compile_pass` passerait aujourd'hui au même
+    /// backend pour ce même pass. Erreur explicite si ce pass n'a encore
+    /// jamais compilé avec succès (`pass_sources[pass]` n'est peuplé
+    /// qu'après la création réussie du pipeline, voir la fin de
+    /// `compile_pass`) plutôt que d'exporter un texte obsolète ou vide.
+    pub fn export_shader_as(&self, pass: usize, target: shader::ExportTarget) -> Result<String, String> {
+        if pass >= NUM_PASSES {
+            return Err(format!("pass invalide: {pass}"));
+        }
+        let user_src = self.pass_sources[pass]
+            .as_ref()
+            .ok_or_else(|| "ce pass n'a pas encore été compilé avec succès".to_string())?;
+        let dialect = self.pass_dialects[pass]
+            .ok_or_else(|| "dialecte inconnu pour ce pass (aucune compilation réussie)".to_string())?;
+        let combined = if self.common_src.trim().is_empty() {
+            user_src.clone()
+        } else {
+            format!("{}\n{}", self.common_src, user_src)
+        };
+        let channel_kinds: [shader::ChannelKind; 4] =
+            std::array::from_fn(|i| Self::channel_kind(&self.channels[pass][i]));
+        shader::export_shader_as(&combined, dialect, target, channel_kinds)
     }
 
     fn check_pass_channel(pass: usize, index: u32) -> Result<(), String> {
@@ -652,11 +850,14 @@ impl Engine {
     /// Points a pass's iChannel slot at a built-in procedural texture
     /// preset (`"checker"`, `"white_noise"`, `"value_noise"`), generated on
     /// the CPU and uploaded once — no image file required, matching
-    /// Shadertoy's own preset texture picker.
-    pub fn set_ichannel_procedural(&mut self, pass: usize, index: u32, kind: &str) -> Result<(), String> {
+    /// Shadertoy's own preset texture picker. `scale`/`seed` -- see
+    /// `ChannelTexture::procedural`'s doc comment.
+    pub fn set_ichannel_procedural(
+        &mut self, pass: usize, index: u32, kind: &str, scale: u32, seed: u32,
+    ) -> Result<(), String> {
         Self::check_pass_channel(pass, index)?;
         let kind = ProceduralKind::from_str(kind)?;
-        let tex = ChannelTexture::procedural(&self.device, &self.queue, kind);
+        let tex = ChannelTexture::procedural(&self.device, &self.queue, kind, scale, seed);
         self.set_channel_input(pass, index, ChannelInput::Procedural(tex))
     }
 

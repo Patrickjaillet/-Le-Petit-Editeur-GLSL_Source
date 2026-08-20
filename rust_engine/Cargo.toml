@@ -1,6 +1,6 @@
 [package]
 name = "shadertoy_engine"
-version = "0.1.13"
+version = "0.1.18"
 edition = "2021"
 
 [lib]
@@ -28,5 +28,17 @@ pyo3 = { version = "0.22", features = ["extension-module", "abi3-py39"] }
 wgpu = { version = "0.20", features = ["glsl"] }
 pollster = "0.3"
 bytemuck = { version = "1.16", features = ["derive"] }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif", "webp"] }
 once_cell = "1.19"
+# RMLG.md section 2.2 : wgpu 0.20 ne réexpose, via ses propres features Cargo, que
+# `naga/glsl-in` (feature "glsl"), `naga/spv-in` (feature "spirv") et `naga?/wgsl-out`
+# (feature "webgpu") — vérifié dans le Cargo.toml source de wgpu 0.20.1 publié sur
+# crates.io, aucune feature `hlsl-out`/`msl-out` n'y est forwardée. `wgpu::naga` est bien
+# un re-export (via `wgpu-core`) de CE dependency `naga`, jamais une copie séparée ; il
+# faut donc l'ajouter ici en dépendance directe, à la **version exacte** verrouillée par
+# `wgpu 0.20.1` dans Cargo.lock (`naga 0.20.0`) pour que Cargo unifie les deux en une
+# seule instance du crate et fasse l'union des features au lieu d'en lier deux copies
+# incompatibles. Vérifié après ajout : `cargo tree -i naga` ne montre toujours qu'une
+# seule ligne `naga v0.20.0`, avec `wgpu`/`wgpu-core`/`wgpu-hal` ET `shadertoy_engine`
+# comme parents.
+naga = { version = "=0.20.0", default-features = false, features = ["hlsl-out", "msl-out"] }

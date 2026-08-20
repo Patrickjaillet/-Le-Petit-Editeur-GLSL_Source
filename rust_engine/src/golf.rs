@@ -74,7 +74,7 @@ enum Tok {
 /// a loop bound or array size must never be touched, since stripping
 /// "trailing zeros" from an actual integer would change its value) starting
 /// at `i`. Mirrors `literals::try_scan_float`.
-fn try_scan_float_literal(chars: &[char], i: usize) -> Option<usize> {
+pub(crate) fn try_scan_float_literal(chars: &[char], i: usize) -> Option<usize> {
     let n = chars.len();
     let mut j = i;
     let mut saw_digit_before = false;
@@ -1776,11 +1776,11 @@ fn strip_comments(src: &str) -> String {
     out
 }
 
-fn is_ident_start(c: char) -> bool {
+pub(crate) fn is_ident_start(c: char) -> bool {
     c.is_ascii_alphabetic() || c == '_'
 }
 
-fn is_ident_char(c: char) -> bool {
+pub(crate) fn is_ident_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
@@ -1896,7 +1896,7 @@ fn collapse_whitespace(run: &str) -> String {
 /// not a GLSL token and merging it changes nothing. Used by
 /// `strip_operator_spaces` to decide which single space, out of a run
 /// that otherwise has none, absolutely must survive.
-fn is_dangerous_operator_pair(a: char, b: char) -> bool {
+pub(crate) fn is_dangerous_operator_pair(a: char, b: char) -> bool {
     matches!(
         (a, b),
         ('+', '+')

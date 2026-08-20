@@ -507,6 +507,259 @@ pub fn header_line_count_for_dialect(
     match dialect {
         crate::dialect::ShaderDialect::Shadertoy => header_line_count(common_src, user_src),
         crate::dialect::ShaderDialect::GlslStandalone => header_line_count_standalone(common_src, user_src),
+        crate::dialect::ShaderDialect::Wgsl => header_line_count_wgsl(common_src, user_src),
+    }
+}
+
+// ---------------------------------------------------------------------
+// Mode WGSL passthrough (RMLG.md, section "1. WGSL — dialecte d'entrée",
+// 1.3 "Backend de compilation") : contrairement aux deux backends GLSL
+// ci-dessus, il n'y a pas de wrapper `mainImage`→`main` à injecter — le
+// `@fragment fn ...` de l'utilisateur est son propre point d'entrée réel,
+// compilé quasiment tel quel (voir `dialect::wgsl_fragment_entry_point_name`,
+// utilisée par `renderer.rs` pour le retrouver). Le rôle de ce backend se
+// limite à injecter, uniquement si référencé, le bloc `Globals` et les
+// paires texture+sampler `iChannel0-3`, et à auto-binder les
+// `var<uniform>` personnalisés dépourvus de `@group`/`@binding` explicite
+// (même choix que le mode GLSL standalone : acceptés avec une valeur par
+// défaut à zéro, pas de branchement automatique sur le panneau de
+// sliders).
+// ---------------------------------------------------------------------
+
+/// Bloc `Globals` WGSL — mêmes champs, dans le même ordre, que l'UBO
+/// `Globals` GLSL (voir `build_fragment_source`). Aucun `vec3` dans ce
+/// bloc (seul cas où l'alignement par défaut WGSL diverge de std140), donc
+/// chaque champ garde le même octet de départ dans les deux langages...
+/// sauf `iChannelTime` : std140 impose 16 octets par élément d'un tableau
+/// de scalaires, alors qu'un `array<f32, 4>` WGSL n'a par défaut qu'un
+/// stride de 4 octets. Exactement le même repli que celui déjà adopté côté
+/// Rust pour ce champ (`GlobalsUniform::channel_time`, stocké comme
+/// `[[f32; 4]; 4]` plutôt que `[f32; 4]` — voir sa doc dans `renderer.rs`)
+/// est reproduit ici textuellement : `array<vec4<f32>, 4>`, dont seul le
+/// premier composant de chaque élément est réellement utilisé. Ce choix
+/// évite d'avoir à vérifier/forcer un stride WGSL non standard : le layout
+/// mémoire par défaut du texte ci-dessous correspond déjà, octet pour
+/// octet, à celui que `Engine::write_globals` écrit dans le même buffer
+/// GPU partagé avec le chemin GLSL.
+const WGSL_GLOBALS_BLOCK: &str = "struct Globals {\n    iResolution: vec4<f32>,\n    iMouse: vec4<f32>,\n    iTime: f32,\n    iTimeDelta: f32,\n    iFrame: i32,\n    _pad0: f32,\n    iDate: vec4<f32>,\n    iSampleRate: f32,\n    _pad1: f32,\n    _pad2: f32,\n    _pad3: f32,\n    iChannelResolution: array<vec4<f32>, 4>,\n    iChannelTime: array<vec4<f32>, 4>,\n};\n@group(0) @binding(0)\nvar<uniform> globals: Globals;\n";
+
+/// Types WGSL scalaires/vecteurs supportés pour un `var<uniform>`
+/// personnalisé auto-bindé — même ensemble que `CUSTOM_UNIFORM_TYPES` côté
+/// GLSL standalone (float/int/bool/vec2/vec3/vec4), exprimé dans leur
+/// syntaxe WGSL.
+const WGSL_CUSTOM_UNIFORM_TYPES: [&str; 6] = ["f32", "i32", "bool", "vec2<f32>", "vec3<f32>", "vec4<f32>"];
+
+/// Repère puis annote *en place* chaque déclaration `var<uniform> <nom>:
+/// <type>;` de premier niveau dans `user_src` qui n'est pas déjà précédée
+/// d'un `@group`/`@binding` explicite. Contrairement au mode GLSL
+/// standalone (`detect_custom_uniforms`/`build_fragment_source_standalone`),
+/// qui se contente d'*ajouter* un second bloc séparé sans toucher au texte
+/// original — WGSL, à la différence de GLSL, refuse catégoriquement deux
+/// déclarations d'un même identifiant au niveau module : dupliquer la
+/// déclaration comme le fait le chemin GLSL serait ici une erreur de
+/// compilation garantie. La déclaration existante de l'utilisateur reçoit
+/// donc directement son `@group(0) @binding(N)` à l'endroit où elle se
+/// trouve déjà.
+///
+/// Même moule volontairement conservateur que `detect_custom_uniforms` :
+/// un seul nom par déclaration, pas de tableau, pas d'initialiseur — toute
+/// déclaration qui s'en écarte est laissée telle quelle (et échouera
+/// probablement à la compilation faute de binding, comme avant ce
+/// chantier). Opère directement sur `user_src` plutôt que sur une version
+/// débarrassée de ses commentaires (comme le fait déjà
+/// `translate_legacy_frag_output`/`replace_whole_word` pour la traduction
+/// `gl_FragColor` côté GLSL standalone, même limitation assumée) : un
+/// `var<uniform> x: f32;` qui apparaîtrait textuellement à l'intérieur
+/// d'un commentaire serait, en théorie, annoté à tort — cas marginal jugé
+/// acceptable au vu de la spécificité du motif recherché.
+///
+/// Retourne `(source_réécrite, uniformes_personnalisés_détectés)`, les
+/// bindings étant attribués séquentiellement à partir de
+/// `first_binding` — même convention que `FIRST_CUSTOM_UNIFORM_BINDING`
+/// côté GLSL standalone.
+fn rewrite_wgsl_custom_uniforms(user_src: &str, first_binding: u32) -> (String, Vec<CustomUniformDecl>) {
+    let chars: Vec<char> = user_src.chars().collect();
+    let n = chars.len();
+    let mut out = String::with_capacity(user_src.len());
+    let mut customs: Vec<CustomUniformDecl> = Vec::new();
+    let mut i = 0;
+    while i < n {
+        if !dialect::is_ident_start(chars[i]) {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        let word_start = i;
+        let mut j = i;
+        while j < n && dialect::is_ident_char(chars[j]) {
+            j += 1;
+        }
+        let word: String = chars[word_start..j].iter().collect();
+        if word != "var" || j >= n || chars[j] != '<' {
+            out.push_str(&word);
+            i = j;
+            continue;
+        }
+        let rest: String = chars[j..].iter().collect();
+        if !rest.starts_with("<uniform>") {
+            out.push_str(&word);
+            i = j;
+            continue;
+        }
+        // Nom.
+        let mut t = j + "<uniform>".len();
+        while t < n && chars[t].is_whitespace() {
+            t += 1;
+        }
+        let name_start = t;
+        while t < n && dialect::is_ident_char(chars[t]) {
+            t += 1;
+        }
+        if t == name_start {
+            out.push_str(&word);
+            i = j;
+            continue;
+        }
+        let name: String = chars[name_start..t].iter().collect();
+        // Réservé au bloc `Globals` injecté par ce backend.
+        if name == "globals" {
+            out.push_str(&word);
+            i = j;
+            continue;
+        }
+        // ':'
+        let mut c = t;
+        while c < n && chars[c].is_whitespace() {
+            c += 1;
+        }
+        if c >= n || chars[c] != ':' {
+            out.push_str(&word);
+            i = j;
+            continue;
+        }
+        c += 1;
+        while c < n && chars[c].is_whitespace() {
+            c += 1;
+        }
+        // Type : identifiant, éventuellement suivi d'un `<...>` générique
+        // (ex. `vec4<f32>`).
+        let type_start = c;
+        while c < n && dialect::is_ident_char(chars[c]) {
+            c += 1;
+        }
+        if c < n && chars[c] == '<' {
+            let mut depth = 1;
+            c += 1;
+            while c < n && depth > 0 {
+                match chars[c] {
+                    '<' => depth += 1,
+                    '>' => depth -= 1,
+                    _ => {}
+                }
+                c += 1;
+            }
+        }
+        let wgsl_type: String = chars[type_start..c].iter().collect();
+        let Some(known_type) = WGSL_CUSTOM_UNIFORM_TYPES.iter().find(|k| **k == wgsl_type) else {
+            out.push_str(&word);
+            i = j;
+            continue;
+        };
+        // Doit être immédiatement suivi (au-delà des espaces) d'un ";" —
+        // sinon initialiseur/forme inattendue, hors périmètre.
+        let mut e = c;
+        while e < n && chars[e].is_whitespace() {
+            e += 1;
+        }
+        if e >= n || chars[e] != ';' {
+            out.push_str(&word);
+            i = j;
+            continue;
+        }
+        // Refuse si déjà annoté : dernier caractère non-espace déjà émis
+        // dans `out` est `)` — signe d'un `@group(...)`/`@binding(...)`
+        // déjà présent, l'utilisateur gère alors lui-même son binding
+        // (même principe que la vérification `)` précédant `layout(...)`
+        // côté GLSL standalone, voir `detect_custom_uniforms`).
+        let out_chars: Vec<char> = out.chars().collect();
+        let mut bi = out_chars.len();
+        while bi > 0 && out_chars[bi - 1].is_whitespace() {
+            bi -= 1;
+        }
+        if bi > 0 && out_chars[bi - 1] == ')' {
+            out.push_str(&word);
+            i = j;
+            continue;
+        }
+        let binding = first_binding + customs.len() as u32;
+        out.push_str(&format!("@group(0) @binding({binding})\n"));
+        out.push_str(&word);
+        customs.push(CustomUniformDecl { glsl_type: known_type, name, binding });
+        i = j;
+    }
+    (out, customs)
+}
+
+/// Équivalent, pour le mode WGSL, de `build_fragment_source`/
+/// `build_fragment_source_standalone` : compile le code utilisateur
+/// quasiment tel quel, son `@fragment fn ...` étant l'entrée réelle du
+/// fragment shader. Voir la doc du module ci-dessus pour le détail de ce
+/// qui est injecté.
+pub fn wgsl_passthrough_backend(
+    user_src: &str,
+    channel_kinds: [ChannelKind; 4],
+    _force_opaque: bool,
+) -> (String, Vec<CustomUniformDecl>) {
+    let (rewritten_src, custom_uniforms) = rewrite_wgsl_custom_uniforms(user_src, FIRST_CUSTOM_UNIFORM_BINDING);
+    let stripped = dialect::strip_comments(&rewritten_src);
+
+    let globals_block = if dialect::contains_whole_word(&stripped, "globals") {
+        WGSL_GLOBALS_BLOCK
+    } else {
+        ""
+    };
+
+    let mut channel_decls = String::new();
+    for (i, kind) in channel_kinds.iter().enumerate() {
+        let channel_name = format!("iChannel{i}");
+        if !dialect::contains_whole_word(&stripped, &channel_name) {
+            continue;
+        }
+        let tex_type = match kind {
+            ChannelKind::D2 => "texture_2d<f32>",
+            ChannelKind::Cube => "texture_cube<f32>",
+        };
+        let tex_binding = 1 + i * 2;
+        let sampler_binding = 2 + i * 2;
+        channel_decls.push_str(&format!(
+            "@group(0) @binding({tex_binding})\nvar {channel_name}: {tex_type};\n@group(0) @binding({sampler_binding})\nvar {channel_name}_sampler: sampler;\n"
+        ));
+    }
+
+    let full = format!("{globals_block}{channel_decls}{rewritten_src}");
+    (full, custom_uniforms)
+}
+
+/// Équivalent de `header_line_count`/`header_line_count_standalone` pour
+/// le mode WGSL : reconstruit exactement la même source que celle
+/// réellement compilée pour ce dialecte (`wgsl_passthrough_backend`,
+/// harness conditionnel) et retrouve la position de `user_src` dedans.
+/// Comme pour le mode standalone (voir sa doc), si `user_src` contient un
+/// `var<uniform>` personnalisé réécrit en place par
+/// `rewrite_wgsl_custom_uniforms`, le texte original n'apparaît plus
+/// verbatim dans la source complète : `find` échoue alors et retombe sur
+/// l'offset `0`, une dégradation déjà acceptée ailleurs dans ce fichier
+/// plutôt qu'un cas nouveau introduit ici.
+pub fn header_line_count_wgsl(common_src: &str, user_src: &str) -> usize {
+    let combined = if common_src.trim().is_empty() {
+        user_src.to_string()
+    } else {
+        format!("{common_src}\n{user_src}")
+    };
+    let (full, _custom_uniforms) = wgsl_passthrough_backend(&combined, [ChannelKind::D2; 4], false);
+    match full.find(user_src) {
+        Some(idx) => full[..idx].matches('\n').count(),
+        None => 0,
     }
 }
 
@@ -561,6 +814,7 @@ struct CompileBackendEntry {
 const COMPILE_BACKENDS: &[CompileBackendEntry] = &[
     CompileBackendEntry { dialect_id: "shadertoy", build: shadertoy_backend },
     CompileBackendEntry { dialect_id: "glsl", build: glsl_standalone_backend },
+    CompileBackendEntry { dialect_id: "wgsl", build: wgsl_passthrough_backend },
 ];
 
 /// Backend de compilation pour un dialecte détecté — point d'entrée unique
@@ -577,6 +831,330 @@ pub fn compile_backend_for(dialect: crate::dialect::ShaderDialect) -> CompileBac
         }
     }
     shadertoy_backend
+}
+
+// ---------------------------------------------------------------------
+// Export HLSL/MSL (RMLG.md, section "2. HLSL & MSL — cibles d'export,
+// jamais dialectes d'entrée", 2.1/2.2) : contrairement au registre
+// `COMPILE_BACKENDS` ci-dessus (réservé aux dialectes réellement
+// détectables/éditables depuis l'éditeur), ce qui suit ne sert qu'à
+// produire, ponctuellement, une traduction texte d'un pass déjà écrit et
+// compilable dans un des trois dialectes existants -- jamais un nouveau
+// dialecte d'entrée. Voir RMLG.md 2.1 pour la justification complète (pas
+// de frontend `hlsl-in`/`msl-in` dans `naga`, donc pas de parcours
+// possible dans l'autre sens).
+// ---------------------------------------------------------------------
+
+/// Langage cible d'un export "shader compilé vers…". Volontairement un
+/// type distinct de `crate::dialect::ShaderDialect` : un `ExportTarget`
+/// n'est jamais ni détecté, ni recollé dans l'éditeur, ni ajouté à
+/// `ShaderDialect::ALL` -- voir la doc de `export_shader_as` et RMLG.md
+/// 2.1 pour la distinction.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ExportTarget {
+    Hlsl,
+    Msl,
+}
+
+/// Traduit un pass déjà écrit dans un des dialectes **éditables** connus
+/// (`ShaderDialect::Shadertoy`/`GlslStandalone`/`Wgsl`) vers du texte HLSL
+/// ou MSL.
+///
+/// Réutilise très exactement le même backend de compilation que celui
+/// employé pour le rendu live (`compile_backend_for` -- même fonction,
+/// mêmes arguments) : la source intermédiaire produite ici est donc
+/// identique, caractère pour caractère (à `force_opaque` près, voir plus
+/// bas), à celle réellement soumise au GPU par
+/// `renderer::Engine::compile_pass` pour ce même pass. Cette source est
+/// ensuite parsée par le frontend `naga` correspondant au dialecte
+/// d'origine (`glsl-in` pour Shadertoy/GLSL standalone, `wgsl-in` pour
+/// WGSL -- jamais de frontend HLSL/MSL, `naga` n'en a pas, voir RMLG.md
+/// 2.1), validée, puis réécrite par le backend `naga` `hlsl-out`/
+/// `msl-out` correspondant sur le module IR validé.
+///
+/// **`force_opaque` toujours à `false`** ici : cette notion (voir
+/// `build_fragment_source`) n'a de sens que pour le pass Image d'un
+/// rendu Shadertoy réellement affiché sur le canvas de ce logiciel --
+/// un export n'a pas la notion de "quel pass alimente le canvas", ce
+/// serait à un futur appelant de la reproduire explicitement s'il en a
+/// besoin (`main_window.py` connaît déjà quel pass est actif).
+///
+/// Volontairement **séparée** de `compile_backend_for`/`COMPILE_BACKENDS`
+/// (qui restent réservés aux dialectes réellement éditables) -- voir
+/// RMLG.md 2.1/2.2, "ne pas ajouter `hlsl`/`msl` à `ShaderDialect::ALL`".
+///
+/// **Ne référence ni n'appelle jamais `crate::golf`** (RMLG.md 2.3) : le
+/// golfer est un outil textuel qui opère sur du GLSL et n'a aucun sens
+/// une fois le module traduit vers l'IR `naga` puis vers HLSL/MSL. `source`
+/// est pris tel quel, golfé ou non -- ce choix appartient entièrement à
+/// l'appelant (qui peut très bien passer le résultat de
+/// `golf::golf_shader`/`golf_shader_with_common`/`golf_shader_ex`, voir
+/// `lib.rs`) -- et il n'y a jamais de second passage de golfing appliqué
+/// ici après traduction. Voir `export_tests::
+/// export_never_applies_golf_and_reflects_whichever_source_the_user_passed`
+/// pour une vérification observable de cette garantie (pas seulement
+/// déclarative) : le backend HLSL de `naga` préserve verbatim les
+/// identifiants du texte source, donc un identifiant volontairement long
+/// survit intact dans la sortie si et seulement si aucun golfing n'a eu
+/// lieu entre-temps.
+///
+/// Capacités de validation `naga` (`naga::valid::Capabilities::empty()`) :
+/// identiques à celles réellement en vigueur pour le rendu live -- le
+/// device de `renderer::Engine::new` demande `wgpu::Features::empty()`,
+/// jamais une feature qui déverrouillerait une capacité `naga`
+/// supplémentaire (push constants, f64, indexation non uniforme de
+/// tableaux de textures, ...) -- donc un module qui compile pour le
+/// rendu live compile aussi pour cet export, et réciproquement.
+///
+/// Limites connues (RMLG.md 2.3, non résolues par cette fonction) : les
+/// bindings `iChannel`/uniforms personnalisés traduits n'utilisent pas
+/// forcément les conventions attendues par un moteur tiers, et il n'y a
+/// aucune garantie de rendu pixel-identique entre le rendu live et une
+/// éventuelle recompilation du texte exporté ailleurs.
+pub fn export_shader_as(
+    source: &str,
+    dialect: crate::dialect::ShaderDialect,
+    target: ExportTarget,
+    channel_kinds: [ChannelKind; 4],
+) -> Result<String, String> {
+    let backend = compile_backend_for(dialect);
+    let (compiled_src, _custom_uniforms) = backend(source, channel_kinds, false);
+
+    // Same naga GLSL-frontend workaround as the live-render path
+    // (`renderer::Engine::compile_pass`) -- see `ctor_fixup`'s module
+    // docs. Not applicable to WGSL (no such "extra arguments ignored"
+    // constructor rule exists there), so left untouched for that dialect.
+    // `parse_src` -- not `compiled_src` -- is what naga actually parses
+    // for GLSL, so it's also what any later naga error must be rendered
+    // against, or line/column spans would point into the wrong text.
+    let parse_src = match dialect {
+        crate::dialect::ShaderDialect::Wgsl => compiled_src.clone(),
+        crate::dialect::ShaderDialect::Shadertoy | crate::dialect::ShaderDialect::GlslStandalone => {
+            crate::ctor_fixup::fixup_overloaded_matrix_constructors(&compiled_src)
+        }
+    };
+
+    let module = match dialect {
+        crate::dialect::ShaderDialect::Wgsl => naga::front::wgsl::parse_str(&parse_src)
+            .map_err(|e| format!(
+                "erreur de parsing WGSL (naga) pendant l'export :\n{}",
+                e.emit_to_string(&parse_src)
+            )),
+        crate::dialect::ShaderDialect::Shadertoy | crate::dialect::ShaderDialect::GlslStandalone => {
+            let options = naga::front::glsl::Options {
+                stage: naga::ShaderStage::Fragment,
+                defines: Default::default(),
+            };
+            naga::front::glsl::Frontend::default()
+                .parse(&options, &parse_src)
+                .map_err(|e| format!(
+                    "erreur de parsing GLSL (naga) pendant l'export :\n{}",
+                    e.emit_to_string(&parse_src)
+                ))
+        }
+    }?;
+
+    let module_info = naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::empty(),
+    )
+    .validate(&module)
+    .map_err(|e| format!(
+        "erreur de validation naga pendant l'export :\n{}",
+        e.emit_to_string(&parse_src)
+    ))?;
+
+    match target {
+        ExportTarget::Hlsl => {
+            let options = naga::back::hlsl::Options::default();
+            let mut out = String::new();
+            let mut writer = naga::back::hlsl::Writer::new(&mut out, &options);
+            writer
+                .write(&module, &module_info)
+                .map_err(|e| format!("erreur d'écriture HLSL (naga) pendant l'export : {e}"))?;
+            Ok(out)
+        }
+        ExportTarget::Msl => {
+            let options = naga::back::msl::Options::default();
+            let pipeline_options = naga::back::msl::PipelineOptions::default();
+            let (out, _info) =
+                naga::back::msl::write_string(&module, &module_info, &options, &pipeline_options)
+                    .map_err(|e| format!("erreur d'écriture MSL (naga) pendant l'export : {e}"))?;
+            Ok(out)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// Tests — export HLSL/MSL (RMLG.md, section 2.2) : mêmes trois dialectes
+// d'entrée que `COMPILE_BACKENDS`, vérifiés via le vrai chemin
+// frontend→validation→backend `naga`, pas seulement via la génération de
+// texte GLSL/WGSL intermédiaire (déjà couverte par `standalone_tests`/
+// `wgsl_tests`).
+// ---------------------------------------------------------------------
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+
+    const NO_CHANNELS: [ChannelKind; 4] = [ChannelKind::D2; 4];
+
+    #[test]
+    fn exports_shadertoy_pass_to_hlsl() {
+        let user_src = "void mainImage(out vec4 c, in vec2 f) { c = vec4(iTime); }";
+        let out = export_shader_as(
+            user_src,
+            crate::dialect::ShaderDialect::Shadertoy,
+            ExportTarget::Hlsl,
+            NO_CHANNELS,
+        )
+        .expect("l'export HLSL doit réussir pour un pass Shadertoy valide");
+        assert!(out.contains("float4"), "sortie HLSL inattendue:\n{out}");
+    }
+
+    #[test]
+    fn exports_shadertoy_pass_to_msl() {
+        let user_src = "void mainImage(out vec4 c, in vec2 f) { c = vec4(iTime); }";
+        let out = export_shader_as(
+            user_src,
+            crate::dialect::ShaderDialect::Shadertoy,
+            ExportTarget::Msl,
+            NO_CHANNELS,
+        )
+        .expect("l'export MSL doit réussir pour un pass Shadertoy valide");
+        assert!(out.contains("#include <metal_stdlib>"), "sortie MSL inattendue:\n{out}");
+    }
+
+    #[test]
+    fn exports_glsl_standalone_pass_to_hlsl() {
+        let user_src = "out vec4 fragColOut;\nvoid main() { fragColOut = vec4(iTime); }";
+        let out = export_shader_as(
+            user_src,
+            crate::dialect::ShaderDialect::GlslStandalone,
+            ExportTarget::Hlsl,
+            NO_CHANNELS,
+        )
+        .expect("l'export HLSL doit réussir pour un pass GLSL standalone valide");
+        assert!(out.contains("float4"), "sortie HLSL inattendue:\n{out}");
+    }
+
+    #[test]
+    fn exports_wgsl_pass_to_msl() {
+        let user_src =
+            "@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(globals.iTime); }";
+        let out = export_shader_as(
+            user_src,
+            crate::dialect::ShaderDialect::Wgsl,
+            ExportTarget::Msl,
+            NO_CHANNELS,
+        )
+        .expect("l'export MSL doit réussir pour un pass WGSL valide");
+        assert!(out.contains("#include <metal_stdlib>"), "sortie MSL inattendue:\n{out}");
+    }
+
+    #[test]
+    fn exports_wgsl_pass_to_hlsl_with_ichannel_binding() {
+        // Couvre le cas iChannel (RMLG.md 2.3) : la traduction doit passer
+        // par la validation naga sans erreur, avec un `Texture2D`/
+        // `SamplerState` HLSL en sortie pour le canal réellement utilisé.
+        let user_src = "@fragment fn main() -> @location(0) vec4<f32> { return textureSample(iChannel0, iChannel0_sampler, vec2<f32>(0.0)); }";
+        let out = export_shader_as(
+            user_src,
+            crate::dialect::ShaderDialect::Wgsl,
+            ExportTarget::Hlsl,
+            NO_CHANNELS,
+        )
+        .expect("l'export HLSL doit réussir pour un pass WGSL utilisant iChannel0");
+        assert!(out.contains("Texture2D"), "sortie HLSL inattendue:\n{out}");
+        assert!(out.contains("SamplerState"), "sortie HLSL inattendue:\n{out}");
+    }
+
+    #[test]
+    fn export_reuses_the_same_intermediate_source_as_compile_backend_for() {
+        // Non-régression explicite du point central de RMLG.md 2.2 :
+        // `export_shader_as` ne doit jamais dupliquer/diverger de la
+        // logique de `compile_backend_for` -- vérifié ici indirectement
+        // (même entrée, même dialecte) en confirmant que le texte HLSL
+        // produit reflète bien le harness réellement injecté par le
+        // backend GLSL standalone (bloc `Globals`, ici volontairement
+        // omis car non référencé -- voir `omits_globals_block_when_unreferenced`
+        // côté `standalone_tests`).
+        let user_src = "out vec4 fragColOut;\nvoid main() { fragColOut = vec4(1.0); }";
+        let (compiled_src, _) = compile_backend_for(crate::dialect::ShaderDialect::GlslStandalone)(
+            user_src, NO_CHANNELS, false,
+        );
+        assert!(!compiled_src.contains("Globals"));
+        let out = export_shader_as(
+            user_src,
+            crate::dialect::ShaderDialect::GlslStandalone,
+            ExportTarget::Hlsl,
+            NO_CHANNELS,
+        )
+        .expect("export attendu réussi");
+        assert!(!out.to_lowercase().contains("cbuffer"), "aucun UBO Globals ne devrait apparaître ici:\n{out}");
+    }
+
+    #[test]
+    fn export_never_applies_golf_and_reflects_whichever_source_the_user_passed() {
+        // RMLG.md 2.3 : "le golfing (golf.rs) ne s'applique jamais à un
+        // export HLSL/MSL [...] l'export part toujours du code source
+        // (golfé ou non, au choix de l'utilisateur), jamais d'un second
+        // golfing post-traduction." `export_shader_as` n'appelle et ne
+        // référence `crate::golf` nulle part (voir sa définition
+        // ci-dessus : `compile_backend_for` -> parse `naga` -> valide ->
+        // écrit HLSL/MSL, rien d'autre) -- vérifié ici de façon
+        // observable plutôt que déclarative : le backend HLSL de `naga`
+        // préserve verbatim les identifiants du texte source (confirmé
+        // par une sonde manuelle sur ce module), donc si `export_shader_as`
+        // golfait la source avant traduction, un identifiant volontairement
+        // long et distinctif comme `veryVerboseLocalNameXYZ` disparaîtrait
+        // de la sortie, remplacé par le nom court à une lettre que
+        // `golf::golf_shader` lui aurait attribué.
+        let verbose_src = "void mainImage(out vec4 fragColorOutputHere, in vec2 fragCoordInputHere) { float veryVerboseLocalNameXYZ = iTime; fragColorOutputHere = vec4(veryVerboseLocalNameXYZ); }";
+
+        // Le golfing doit réellement raccourcir ce nom (sinon ce test ne
+        // vérifie rien) -- confirmé au passage, pas supposé.
+        let golfed_src = crate::golf::golf_shader(verbose_src);
+        assert!(
+            !golfed_src.contains("veryVerboseLocalNameXYZ"),
+            "golf_shader devrait avoir renommé l'identifiant long, sinon ce \
+             test ne peut pas distinguer golfé/non golfé :\n{golfed_src}"
+        );
+
+        // 1) Export de la source NON golfée : l'identifiant original doit
+        //    survivre intact dans la sortie HLSL -- la preuve qu'aucun golf
+        //    n'a été appliqué en interne par `export_shader_as`.
+        let out_verbose = export_shader_as(
+            verbose_src,
+            crate::dialect::ShaderDialect::Shadertoy,
+            ExportTarget::Hlsl,
+            NO_CHANNELS,
+        )
+        .expect("l'export HLSL doit réussir sur la source non golfée");
+        assert!(
+            out_verbose.contains("veryVerboseLocalNameXYZ"),
+            "l'identifiant original doit survivre tel quel dans la sortie \
+             HLSL -- sa disparition indiquerait qu'un golfing a été \
+             appliqué avant traduction, ce que RMLG.md interdit \
+             explicitement:\n{out_verbose}"
+        );
+
+        // 2) Export de la source déjà golfée par l'utilisateur (choix de
+        //    l'utilisateur, fait *avant* l'export, jamais par
+        //    `export_shader_as` lui-même) : doit réussir de façon tout
+        //    aussi indépendante, sur ce texte-là tel quel -- pas de
+        //    "second golfing post-traduction", et pas de golfing implicite
+        //    supplémentaire non plus (les noms à une lettre déjà présents
+        //    dans `golfed_src` ne doivent pas être raccourcis davantage,
+        //    il n'y a de toute façon plus rien à raccourcir).
+        let out_golfed = export_shader_as(
+            &golfed_src,
+            crate::dialect::ShaderDialect::Shadertoy,
+            ExportTarget::Hlsl,
+            NO_CHANNELS,
+        )
+        .expect("l'export HLSL doit réussir tout aussi bien sur la source déjà golfée par l'utilisateur");
+        assert!(out_golfed.contains("float4"), "sortie HLSL inattendue:\n{out_golfed}");
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -740,6 +1318,10 @@ mod standalone_tests {
         let glsl_src = "out vec4 fragColOut;\nvoid main() { fragColOut = vec4(1.0); }";
         let glsl_offset = header_line_count_for_dialect("", glsl_src, crate::dialect::ShaderDialect::GlslStandalone);
         assert_eq!(glsl_offset, header_line_count_standalone("", glsl_src));
+
+        let wgsl_src = "@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(globals.iTime); }";
+        let wgsl_offset = header_line_count_for_dialect("", wgsl_src, crate::dialect::ShaderDialect::Wgsl);
+        assert_eq!(wgsl_offset, header_line_count_wgsl("", wgsl_src));
     }
 
     // -----------------------------------------------------------------
@@ -783,4 +1365,155 @@ mod standalone_tests {
         assert_eq!(customs_via_registry.len(), customs_direct.len());
         assert_eq!(customs_via_registry[0].name, customs_direct[0].name);
     }
+
+    #[test]
+    fn compile_backend_for_wgsl_matches_direct_call() {
+        let user_src = "@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(globals.iTime); }";
+        let backend = compile_backend_for(crate::dialect::ShaderDialect::Wgsl);
+        let (via_registry, _) = backend(user_src, NO_CHANNELS, false);
+        let (direct, _) = wgsl_passthrough_backend(user_src, NO_CHANNELS, false);
+        assert_eq!(via_registry, direct);
+    }
 }
+
+// ---------------------------------------------------------------------
+// Tests — mode WGSL passthrough (RMLG.md, section "1. WGSL — dialecte
+// d'entrée", 1.3 "Backend de compilation") : injection conditionnelle du
+// bloc `Globals`, des paires texture+sampler `iChannel0-3`, et
+// auto-binding en place des `var<uniform>` personnalisés.
+// ---------------------------------------------------------------------
+#[cfg(test)]
+mod wgsl_tests {
+    use super::*;
+
+    const NO_CHANNELS: [ChannelKind; 4] = [ChannelKind::D2; 4];
+
+    #[test]
+    fn omits_globals_block_when_unreferenced() {
+        let (full, _) = wgsl_passthrough_backend(
+            "@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            NO_CHANNELS,
+            false,
+        );
+        assert!(!full.contains("struct Globals"));
+        assert!(!full.contains("var<uniform> globals"));
+    }
+
+    #[test]
+    fn injects_globals_block_when_referenced() {
+        let (full, _) = wgsl_passthrough_backend(
+            "@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(globals.iTime); }",
+            NO_CHANNELS,
+            false,
+        );
+        assert!(full.contains("struct Globals"));
+        assert!(full.contains("@group(0) @binding(0)"));
+        assert!(full.contains("var<uniform> globals: Globals;"));
+    }
+
+    #[test]
+    fn globals_block_pads_ichanneltime_to_vec4_stride() {
+        // RMLG.md 1.3 : le stride WGSL par défaut d'un `array<f32, 4>`
+        // (4 octets) ne correspond pas au stride std140 d'un tableau de
+        // scalaires (16 octets) — le champ doit donc être un
+        // `array<vec4<f32>, 4>`, jamais un `array<f32, 4>` brut.
+        let (full, _) = wgsl_passthrough_backend(
+            "@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(globals.iTime); }",
+            NO_CHANNELS,
+            false,
+        );
+        assert!(full.contains("iChannelTime: array<vec4<f32>, 4>"));
+        assert!(!full.contains("iChannelTime: array<f32, 4>"));
+    }
+
+    #[test]
+    fn only_declares_referenced_ichannels() {
+        let (full, _) = wgsl_passthrough_backend(
+            "@fragment fn main() -> @location(0) vec4<f32> { return textureSample(iChannel2, iChannel2_sampler, vec2<f32>(0.0)); }",
+            NO_CHANNELS,
+            false,
+        );
+        assert!(full.contains("var iChannel2: texture_2d<f32>;"));
+        assert!(full.contains("var iChannel2_sampler: sampler;"));
+        assert!(!full.contains("iChannel0:"));
+        assert!(!full.contains("iChannel1:"));
+        assert!(!full.contains("iChannel3:"));
+    }
+
+    #[test]
+    fn declares_cube_type_for_cube_channel_kind() {
+        let mut kinds = NO_CHANNELS;
+        kinds[1] = ChannelKind::Cube;
+        let (full, _) = wgsl_passthrough_backend(
+            "@fragment fn main() -> @location(0) vec4<f32> { return textureSample(iChannel1, iChannel1_sampler, vec3<f32>(0.0)); }",
+            kinds,
+            false,
+        );
+        assert!(full.contains("var iChannel1: texture_cube<f32>;"));
+    }
+
+    #[test]
+    fn detects_and_auto_binds_custom_uniform_in_place() {
+        let (full, customs) = wgsl_passthrough_backend(
+            "var<uniform> speed: f32;\n@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(speed); }",
+            NO_CHANNELS,
+            false,
+        );
+        assert_eq!(customs.len(), 1);
+        assert_eq!(customs[0].name, "speed");
+        assert_eq!(customs[0].glsl_type, "f32");
+        assert_eq!(customs[0].binding, FIRST_CUSTOM_UNIFORM_BINDING);
+        assert!(full.contains(&format!("@group(0) @binding({FIRST_CUSTOM_UNIFORM_BINDING})\nvar<uniform> speed: f32;")));
+        // Une seule déclaration de `speed` au total — jamais dupliquée
+        // (contrairement au mode GLSL standalone, WGSL interdit deux
+        // déclarations d'un même identifiant au niveau module).
+        assert_eq!(full.matches("var<uniform> speed").count(), 1);
+    }
+
+    #[test]
+    fn assigns_sequential_bindings_to_multiple_custom_uniforms() {
+        let (_, customs) = wgsl_passthrough_backend(
+            "var<uniform> speed: f32;\nvar<uniform> tint: vec3<f32>;\n@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(tint * speed, 1.0); }",
+            NO_CHANNELS,
+            false,
+        );
+        assert_eq!(customs.len(), 2);
+        assert_eq!(customs[0].binding, FIRST_CUSTOM_UNIFORM_BINDING);
+        assert_eq!(customs[1].binding, FIRST_CUSTOM_UNIFORM_BINDING + 1);
+    }
+
+    #[test]
+    fn does_not_rebind_uniform_with_explicit_group_binding() {
+        let (full, customs) = wgsl_passthrough_backend(
+            "@group(0) @binding(42)\nvar<uniform> manual: f32;\n@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(manual); }",
+            NO_CHANNELS,
+            false,
+        );
+        assert!(customs.is_empty());
+        assert!(full.contains("@binding(42)"));
+        assert_eq!(full.matches("var<uniform> manual").count(), 1);
+    }
+
+    #[test]
+    fn ignores_globals_instance_name_as_custom_uniform() {
+        // Un utilisateur qui redéclarerait lui-même `globals` entrerait en
+        // collision avec le bloc injecté — cas de toute façon marginal/mal
+        // formé, traité comme non éligible plutôt que rebindé.
+        let (_, customs) = wgsl_passthrough_backend(
+            "var<uniform> globals: f32;\n@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(globals); }",
+            NO_CHANNELS,
+            false,
+        );
+        assert!(customs.is_empty());
+    }
+
+    #[test]
+    fn header_line_count_wgsl_matches_generated_source() {
+        let user_src = "@fragment fn main() -> @location(0) vec4<f32> {\n    return vec4<f32>(globals.iTime);\n}\n";
+        let offset = header_line_count_wgsl("", user_src);
+        let (full, _) = wgsl_passthrough_backend(user_src, NO_CHANNELS, false);
+        let lines: Vec<&str> = full.lines().collect();
+        assert_eq!(lines[offset], "@fragment fn main() -> @location(0) vec4<f32> {");
+    }
+}
+

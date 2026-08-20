@@ -73,10 +73,13 @@ impl XorShift32 {
     }
 }
 
-/// Flat black/white(ish) checkerboard, 8x8 cells across the texture.
-fn generate_checker(size: u32) -> Vec<u8> {
-    const CELLS: u32 = 8;
-    let cell = (size / CELLS).max(1);
+/// Flat black/white(ish) checkerboard, `cells`x`cells` cells across the
+/// texture (RM10.md section 5: the "taille de motif" knob exposed via
+/// `Engine.set_ichannel_procedural`'s `scale` parameter -- more cells
+/// means a finer checker pattern).
+fn generate_checker(size: u32, cells: u32) -> Vec<u8> {
+    let cells = cells.max(1);
+    let cell = (size / cells).max(1);
     let mut out = vec![0u8; (size * size * 4) as usize];
     for y in 0..size {
         for x in 0..size {
@@ -110,25 +113,29 @@ fn generate_white_noise(size: u32, seed: u32) -> Vec<u8> {
 /// interpolated (with a smoothstep fade, not a linear one, to avoid
 /// visible grid-diagonal creases) up to the full texel grid. Grayscale,
 /// replicated across RGB.
-fn generate_value_noise(size: u32, seed: u32) -> Vec<u8> {
-    const GRID: u32 = 8;
+fn generate_value_noise(size: u32, grid_size: u32, seed: u32) -> Vec<u8> {
+    // RM10.md section 5: "taille de motif" -- a finer grid (higher value)
+    // means smaller, more numerous noise blobs; a coarser one (lower
+    // value) means larger, smoother blobs. `.max(1)` avoids a
+    // divide-by-zero below if the caller passes 0.
+    let grid_size = grid_size.max(1);
     let mut rng = XorShift32::new(seed);
-    let mut grid = vec![0f32; ((GRID + 1) * (GRID + 1)) as usize];
+    let mut grid = vec![0f32; ((grid_size + 1) * (grid_size + 1)) as usize];
     for v in grid.iter_mut() {
         *v = rng.next_unit_f32();
     }
-    let sample_grid = |gx: u32, gy: u32| grid[(gy * (GRID + 1) + gx) as usize];
+    let sample_grid = |gx: u32, gy: u32| grid[(gy * (grid_size + 1) + gx) as usize];
     let fade = |t: f32| t * t * (3.0 - 2.0 * t);
 
     let mut out = vec![0u8; (size * size * 4) as usize];
     for y in 0..size {
         for x in 0..size {
-            let fx = x as f32 / size as f32 * GRID as f32;
-            let fy = y as f32 / size as f32 * GRID as f32;
+            let fx = x as f32 / size as f32 * grid_size as f32;
+            let fy = y as f32 / size as f32 * grid_size as f32;
             let x0 = fx.floor() as u32;
             let y0 = fy.floor() as u32;
-            let x1 = (x0 + 1).min(GRID);
-            let y1 = (y0 + 1).min(GRID);
+            let x1 = (x0 + 1).min(grid_size);
+            let y1 = (y0 + 1).min(grid_size);
             let tx = fade(fx - x0 as f32);
             let ty = fade(fy - y0 as f32);
 
@@ -617,14 +624,29 @@ impl ChannelTexture {
     /// plain `Rgba8Unorm` texture, exactly like a loaded image file — same
     /// bind group entry, same repeat-wrap/linear sampler, no engine-side
     /// special case at sample time.
-    pub fn procedural(device: &wgpu::Device, queue: &wgpu::Queue, kind: ProceduralKind) -> Self {
+    ///
+    /// RM10.md section 5: `scale` (pattern size -- checker cell count /
+    /// value-noise grid resolution, ignored by white noise, which has no
+    /// notion of pattern size) and `seed` (0 means "use this preset's own
+    /// default", not literally seed 0 -- `checker` ignores it too, being
+    /// deterministic) are user-adjustable rather than hardcoded, unlike
+    /// before this existed. The two defaults below (`0x9E3779B9` for white
+    /// noise, `0x1234_5678` for value noise) match this feature's original
+    /// fixed seeds exactly, so an existing project that never touches the
+    /// new controls keeps rendering identically.
+    pub fn procedural(
+        device: &wgpu::Device, queue: &wgpu::Queue, kind: ProceduralKind, scale: u32, seed: u32,
+    ) -> Self {
         let size = PROCEDURAL_TEXTURE_SIZE;
-        // Fixed, distinct seeds per preset: arbitrary but stable, so the
-        // same choice always renders identically across runs and reloads.
+        let scale = if scale == 0 { 8 } else { scale };
         let rgba = match kind {
-            ProceduralKind::Checker => generate_checker(size),
-            ProceduralKind::WhiteNoise => generate_white_noise(size, 0x9E37_79B9),
-            ProceduralKind::ValueNoise => generate_value_noise(size, 0x1234_5678),
+            ProceduralKind::Checker => generate_checker(size, scale),
+            ProceduralKind::WhiteNoise => {
+                generate_white_noise(size, if seed == 0 { 0x9E37_79B9 } else { seed })
+            }
+            ProceduralKind::ValueNoise => {
+                generate_value_noise(size, scale, if seed == 0 { 0x1234_5678 } else { seed })
+            }
         };
         let extent = wgpu::Extent3d {
             width: size,

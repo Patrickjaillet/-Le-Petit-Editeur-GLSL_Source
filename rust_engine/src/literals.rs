@@ -493,6 +493,28 @@ pub fn detect_all_sliders(src: &str) -> DetectedSliders {
         };
 
         if let Some(ds) = digits_start {
+            // Hex integer literal (`0x1F`, `0X2a`) -- GLSL allows these, but
+            // this detector has no notion of hex-formatted output. Without
+            // this check, `try_scan_float` fails (no `.`/exponent) and the
+            // plain-int fallback below would scan only the leading `0`,
+            // leaving `x1F` dangling as ordinary source text right after a
+            // slider-controlled span -- so dragging that "slider" would
+            // rewrite `0x1F` into e.g. `5x1F`, corrupting the shader instead
+            // of just being a merely unhelpful control. Skipped wholesale
+            // instead, like a `for(...)` header: a documented exception, not
+            // a silently truncated one.
+            if chars[ds] == '0'
+                && ds + 2 < n
+                && (chars[ds + 1] == 'x' || chars[ds + 1] == 'X')
+                && chars[ds + 2].is_ascii_hexdigit()
+            {
+                let mut k = ds + 2;
+                while k < n && chars[k].is_ascii_hexdigit() {
+                    k += 1;
+                }
+                i = k;
+                continue;
+            }
             let masked = paren_stack.iter().any(|&b| b);
             if let Some(end) = try_scan_float(&chars, ds) {
                 if !masked {

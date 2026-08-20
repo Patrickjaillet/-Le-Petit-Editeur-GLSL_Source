@@ -17,6 +17,7 @@
 pub enum ShaderDialect {
     Shadertoy,
     GlslStandalone,
+    Wgsl,
 }
 
 impl ShaderDialect {
@@ -33,12 +34,17 @@ impl ShaderDialect {
     /// dialectes connus sans les lister en dur) même si rien ne l'appelle
     /// encore hors des tests.
     #[allow(dead_code)]
-    pub const ALL: [ShaderDialect; 2] = [ShaderDialect::Shadertoy, ShaderDialect::GlslStandalone];
+    pub const ALL: [ShaderDialect; 3] = [
+        ShaderDialect::Shadertoy,
+        ShaderDialect::GlslStandalone,
+        ShaderDialect::Wgsl,
+    ];
 
     pub fn id(self) -> &'static str {
         match self {
             ShaderDialect::Shadertoy => "shadertoy",
             ShaderDialect::GlslStandalone => "glsl",
+            ShaderDialect::Wgsl => "wgsl",
         }
     }
 
@@ -46,6 +52,7 @@ impl ShaderDialect {
         match id {
             "shadertoy" => Some(ShaderDialect::Shadertoy),
             "glsl" => Some(ShaderDialect::GlslStandalone),
+            "wgsl" => Some(ShaderDialect::Wgsl),
             _ => None,
         }
     }
@@ -60,6 +67,18 @@ pub enum DialectSignal {
     VoidMain,
     VersionDirective,
     FragColorLegacy,
+    /// Attribut d'entry point WGSL (`@fragment fn ...`) — voir
+    /// `matches_wgsl_entry_point`. Signal fort, syntaxe absente des deux
+    /// dialectes GLSL déjà supportés (`@` n'est pas un caractère valide en
+    /// GLSL), donc aucune ambiguïté possible avec `MainImage`/`VoidMain`.
+    WgslEntryPoint,
+    /// Signal secondaire WGSL, plus faible : qualificatif de stockage
+    /// (`var<uniform>`/`var<storage>`) ou constructeur de type générique
+    /// natif (`vec4<f32>(...)`) — utile pour un onglet WGSL qui ne
+    /// contient que des fonctions utilitaires sans point d'entrée
+    /// (équivalent WGSL d'un onglet `Common`). Voir
+    /// `matches_wgsl_uniform_or_generic_type`.
+    WgslUniformOrGeneric,
     /// Aucun signal dans le texte actuel (ex. onglet Common pur, ou tab
     /// vide) : le mode précédemment affiché est conservé tel quel.
     NoneKept,
@@ -74,6 +93,8 @@ impl DialectSignal {
             DialectSignal::VoidMain => "footer.dialect_signal_voidmain",
             DialectSignal::VersionDirective => "footer.dialect_signal_version",
             DialectSignal::FragColorLegacy => "footer.dialect_signal_fragcolor",
+            DialectSignal::WgslEntryPoint => "footer.dialect_signal_wgslentrypoint",
+            DialectSignal::WgslUniformOrGeneric => "footer.dialect_signal_wgsluniformorgeneric",
             DialectSignal::NoneKept => "footer.dialect_signal_none",
         }
     }
@@ -265,6 +286,209 @@ fn matches_frag_color_legacy(stripped: &str) -> bool {
     contains_whole_word(stripped, "gl_FragColor") || contains_whole_word(stripped, "gl_FragData")
 }
 
+/// Vrai si `stripped` contient un attribut d'entry point WGSL `@fragment`
+/// suivi (à distance raisonnable, en tolérant d'autres attributs comme
+/// `@compute`/`@vertex`/`@workgroup_size(...)` placés entre les deux) d'un
+/// mot-clé `fn` — signature de fonction WGSL. `@` n'étant pas un caractère
+/// valide en GLSL, ce signal ne peut jamais se confondre avec
+/// `mainImage`/`main()`.
+fn matches_wgsl_entry_point(stripped: &str) -> bool {
+    let chars: Vec<char> = stripped.chars().collect();
+    let n = chars.len();
+    let target: Vec<char> = "@fragment".chars().collect();
+    let tn = target.len();
+    let mut i = 0;
+    while i + tn <= n {
+        if chars[i..i + tn] == target[..] {
+            let before_ok = i == 0 || !is_ident_char(chars[i - 1]);
+            let after_idx = i + tn;
+            let after_ok = after_idx >= n || !is_ident_char(chars[after_idx]);
+            if before_ok && after_ok && wgsl_fn_follows_attributes(&chars, after_idx) {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+/// À partir de `start` (juste après un attribut `@xxx` déjà reconnu),
+/// avance au-delà des espaces et d'éventuels autres attributs WGSL
+/// (`@compute`, `@workgroup_size(8, 8)`, ...) jusqu'à trouver le mot-clé
+/// `fn`. Renvoie faux si autre chose qu'un attribut ou `fn` est rencontré
+/// en chemin (ex. attribut orphelin jamais suivi d'une fonction).
+fn wgsl_fn_follows_attributes(chars: &[char], start: usize) -> bool {
+    wgsl_fn_keyword_end_after_attributes(chars, start).is_some()
+}
+
+/// Cœur commun à `wgsl_fn_follows_attributes` (détection, section 1.2) et
+/// `wgsl_fragment_entry_point_name` (extraction du nom, section 1.3) : à
+/// partir de `start` (juste après un attribut `@xxx` déjà reconnu), avance
+/// au-delà des espaces et d'éventuels autres attributs WGSL (`@compute`,
+/// `@workgroup_size(8, 8)`, ...) jusqu'au mot-clé `fn`, et renvoie l'index
+/// juste après ce `fn` si trouvé (`None` sinon — attribut orphelin jamais
+/// suivi d'une fonction).
+fn wgsl_fn_keyword_end_after_attributes(chars: &[char], start: usize) -> Option<usize> {
+    let n = chars.len();
+    let mut i = start;
+    loop {
+        while i < n && chars[i].is_whitespace() {
+            i += 1;
+        }
+        if i < n && chars[i] == '@' {
+            i += 1;
+            while i < n && is_ident_char(chars[i]) {
+                i += 1;
+            }
+            while i < n && chars[i].is_whitespace() {
+                i += 1;
+            }
+            if i < n && chars[i] == '(' {
+                let mut depth = 1;
+                i += 1;
+                while i < n && depth > 0 {
+                    match chars[i] {
+                        '(' => depth += 1,
+                        ')' => depth -= 1,
+                        _ => {}
+                    }
+                    i += 1;
+                }
+            }
+            continue;
+        }
+        break;
+    }
+    if i + 2 <= n && chars[i..i + 2] == ['f', 'n'] {
+        let before_ok = i == 0 || !is_ident_char(chars[i - 1]);
+        let after_ok = i + 2 == n || !is_ident_char(chars[i + 2]);
+        if before_ok && after_ok {
+            return Some(i + 2);
+        }
+    }
+    None
+}
+
+/// Nom du point d'entrée `@fragment fn <nom>(...)` détecté dans `stripped`
+/// (même repérage que `matches_wgsl_entry_point`, mais retourne le nom
+/// plutôt qu'un simple booléen) — RMLG.md, section 1.3 : contrairement au
+/// harness GLSL, dont le point d'entrée est toujours le `void main()` fixe
+/// qu'il construit lui-même (voir `shader::build_fragment_source`), le
+/// mode WGSL passthrough ne réécrit pas le code utilisateur : son point
+/// d'entrée réel peut porter n'importe quel nom, que `renderer.rs` doit
+/// donc retrouver pour le passer à `wgpu::FragmentState::entry_point`.
+/// `None` si aucun `@fragment fn ...` n'est trouvé (filet de sécurité : ne
+/// devrait pas arriver pour un pass dont le dialecte détecté est déjà
+/// `Wgsl`, `matches_wgsl_entry_point` cherchant exactement le même motif).
+pub(crate) fn wgsl_fragment_entry_point_name(stripped: &str) -> Option<String> {
+    let chars: Vec<char> = stripped.chars().collect();
+    let n = chars.len();
+    let target: Vec<char> = "@fragment".chars().collect();
+    let tn = target.len();
+    let mut i = 0;
+    while i + tn <= n {
+        if chars[i..i + tn] == target[..] {
+            let before_ok = i == 0 || !is_ident_char(chars[i - 1]);
+            let after_idx = i + tn;
+            let after_ok = after_idx >= n || !is_ident_char(chars[after_idx]);
+            if before_ok && after_ok {
+                if let Some(fn_end) = wgsl_fn_keyword_end_after_attributes(&chars, after_idx) {
+                    let mut m = fn_end;
+                    while m < n && chars[m].is_whitespace() {
+                        m += 1;
+                    }
+                    let name_start = m;
+                    while m < n && is_ident_char(chars[m]) {
+                        m += 1;
+                    }
+                    if m > name_start {
+                        return Some(chars[name_start..m].iter().collect());
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Vrai si `stripped` contient `var<uniform` / `var<storage` (qualificatif
+/// de stockage WGSL, `var` suivi immédiatement de `<`, sans espace, comme
+/// l'exige la syntaxe) — jamais une simple sous-chaîne libre.
+fn matches_wgsl_storage_qualifier(stripped: &str) -> bool {
+    let chars: Vec<char> = stripped.chars().collect();
+    let n = chars.len();
+    let mut i = 0;
+    while i < n {
+        if is_ident_start(chars[i]) {
+            let start = i;
+            while i < n && is_ident_char(chars[i]) {
+                i += 1;
+            }
+            let word: String = chars[start..i].iter().collect();
+            if word == "var" && i < n && chars[i] == '<' {
+                let rest: String = chars[i..].iter().collect();
+                if rest.starts_with("<uniform") || rest.starts_with("<storage") {
+                    return true;
+                }
+            }
+        } else {
+            i += 1;
+        }
+    }
+    false
+}
+
+/// Vrai si `stripped` contient un motif syntaxique réel de constructeur de
+/// type générique natif WGSL sans équivalent GLSL valide :
+/// `identifiant<...>(` (ex. `vec4<f32>(`) — la syntaxe générique `<...>`
+/// n'existe pas comme constructeur en GLSL. Porte sur `stripped` (donc
+/// jamais sur le contenu d'un commentaire) et sur ce motif syntaxique
+/// précis, jamais sur une sous-chaîne libre comme `vec4<T>` dans un texte
+/// quelconque.
+fn matches_wgsl_generic_constructor(stripped: &str) -> bool {
+    let chars: Vec<char> = stripped.chars().collect();
+    let n = chars.len();
+    let mut i = 0;
+    while i < n {
+        if is_ident_start(chars[i]) {
+            while i < n && is_ident_char(chars[i]) {
+                i += 1;
+            }
+            if i < n && chars[i] == '<' {
+                let mut j = i + 1;
+                let mut depth = 1;
+                while j < n && depth > 0 {
+                    match chars[j] {
+                        '<' => depth += 1,
+                        '>' => depth -= 1,
+                        _ => {}
+                    }
+                    j += 1;
+                }
+                if depth == 0 {
+                    let mut k = j;
+                    while k < n && chars[k].is_whitespace() {
+                        k += 1;
+                    }
+                    if k < n && chars[k] == '(' {
+                        return true;
+                    }
+                }
+                i = j;
+                continue;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    false
+}
+
+fn matches_wgsl_uniform_or_generic_type(stripped: &str) -> bool {
+    matches_wgsl_storage_qualifier(stripped) || matches_wgsl_generic_constructor(stripped)
+}
+
 /// Registre ordonné (l'ordre du tableau ne sert qu'à départager une
 /// éventuelle égalité de score, voir `DialectDetector::confidence` — la
 /// priorité réelle vient des scores). Pour ajouter un futur langage :
@@ -281,10 +505,31 @@ const DETECTORS: &[DialectDetector] = &[
         matches: matches_main_image,
     },
     DialectDetector {
+        dialect: ShaderDialect::Wgsl,
+        signal: DialectSignal::WgslEntryPoint,
+        // Signal fort comme MainImage (aucune ambiguïté possible : `@`
+        // n'est pas un caractère valide en GLSL) — décalé à 95 uniquement
+        // pour garder tous les scores distincts (voir
+        // `registry_confidence_scores_are_strictly_ordered_and_unique`),
+        // l'ordre relatif avec MainImage n'a pas de sens puisqu'aucun
+        // texte ne peut matcher les deux à la fois.
+        confidence: 95,
+        matches: matches_wgsl_entry_point,
+    },
+    DialectDetector {
         dialect: ShaderDialect::GlslStandalone,
         signal: DialectSignal::VoidMain,
         confidence: 80,
         matches: matches_void_main,
+    },
+    DialectDetector {
+        dialect: ShaderDialect::Wgsl,
+        signal: DialectSignal::WgslUniformOrGeneric,
+        // Signal secondaire, plus faible que VoidMain (80) mais plus fort
+        // que VersionDirective (50) : utile pour un onglet WGSL "Common"
+        // sans point d'entrée.
+        confidence: 60,
+        matches: matches_wgsl_uniform_or_generic_type,
     },
     DialectDetector {
         dialect: ShaderDialect::GlslStandalone,
@@ -355,6 +600,41 @@ mod tests {
 
     fn det(source: &str, previous: Option<ShaderDialect>) -> DialectDetection {
         detect_dialect(source, previous)
+    }
+
+    // -----------------------------------------------------------------
+    // RMLG.md, section 1.3 : `wgsl_fragment_entry_point_name`, utilisée
+    // par `renderer.rs::compile_pass` pour retrouver le vrai nom du point
+    // d'entrée fragment WGSL (jamais forcément `main`, contrairement au
+    // harness GLSL).
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn wgsl_entry_point_name_simple() {
+        let name = wgsl_fragment_entry_point_name("@fragment fn frag_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }");
+        assert_eq!(name.as_deref(), Some("frag_main"));
+    }
+
+    #[test]
+    fn wgsl_entry_point_name_with_other_attributes_between() {
+        // `@fragment` n'est pas forcément le tout premier attribut, ni
+        // immédiatement suivi de `fn` sans autre attribut entre les deux.
+        let name = wgsl_fragment_entry_point_name("@fragment @must_use fn main() -> @location(0) vec4<f32> { return vec4<f32>(0.0); }");
+        assert_eq!(name.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn wgsl_entry_point_name_ignores_other_functions() {
+        let name = wgsl_fragment_entry_point_name(
+            "fn helper() -> f32 { return 1.0; }\n@vertex fn vs_main() {}\n@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+        );
+        assert_eq!(name.as_deref(), Some("fs_main"));
+    }
+
+    #[test]
+    fn wgsl_entry_point_name_none_when_absent() {
+        let name = wgsl_fragment_entry_point_name("fn helper() -> f32 { return 1.0; }");
+        assert_eq!(name, None);
     }
 
     #[test]
@@ -520,6 +800,102 @@ mod tests {
                 detector.dialect
             );
         }
+    }
+
+    #[test]
+    fn detects_wgsl_via_fragment_entry_point() {
+        let d = det(
+            "@fragment\nfn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }",
+            None,
+        );
+        assert_eq!(d.dialect, ShaderDialect::Wgsl);
+        assert_eq!(d.signal, DialectSignal::WgslEntryPoint);
+    }
+
+    #[test]
+    fn detects_wgsl_entry_point_tolerating_other_attributes_and_spacing() {
+        let variants = [
+            "@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(0.0); }",
+            "@fragment\n\nfn fs_main() { }",
+            // Point d'entrée compute ailleurs dans le fichier : ne doit
+            // jamais empêcher la détection du `@fragment` réel.
+            "@compute @workgroup_size(8, 8)\nfn cs_main() { }\n@fragment\nfn fs_main() { }",
+        ];
+        for src in variants {
+            let d = det(src, None);
+            assert_eq!(d.dialect, ShaderDialect::Wgsl, "échec sur: {src:?}");
+            assert_eq!(d.signal, DialectSignal::WgslEntryPoint, "échec sur: {src:?}");
+        }
+    }
+
+    #[test]
+    fn detects_wgsl_via_storage_qualifier_without_entry_point() {
+        // Onglet WGSL "Common" : que des uniforms, aucun point d'entrée.
+        let d = det(
+            "struct Globals { iTime: f32 };\n@group(0) @binding(0) var<uniform> globals: Globals;\n",
+            None,
+        );
+        assert_eq!(d.dialect, ShaderDialect::Wgsl);
+        assert_eq!(d.signal, DialectSignal::WgslUniformOrGeneric);
+    }
+
+    #[test]
+    fn detects_wgsl_via_generic_constructor_without_entry_point() {
+        let d = det("fn helper() -> f32 { let v = vec4<f32>(1.0, 0.0, 0.0, 1.0); return v.x; }", None);
+        assert_eq!(d.dialect, ShaderDialect::Wgsl);
+        assert_eq!(d.signal, DialectSignal::WgslUniformOrGeneric);
+    }
+
+    #[test]
+    fn wgsl_entry_point_wins_over_secondary_signal() {
+        let d = det(
+            "var<uniform> globals: Globals;\n@fragment\nfn fs_main() -> vec4<f32> { return vec4<f32>(1.0); }",
+            None,
+        );
+        assert_eq!(d.dialect, ShaderDialect::Wgsl);
+        assert_eq!(d.signal, DialectSignal::WgslEntryPoint);
+    }
+
+    #[test]
+    fn does_not_confuse_glsl_generic_looking_comparisons_with_wgsl() {
+        // `a<b>(c)` n'existe pas vraiment en GLSL idiomatique, mais on
+        // vérifie que de simples comparaisons juxtaposées (`x<y>(z)` ne
+        // formant pas un vrai identifiant<...>() valide côté opérandes) ne
+        // suffisent pas à elles seules à faire basculer un GLSL standard
+        // qui a par ailleurs un signal GLSL clair et prioritaire.
+        let d = det(
+            "void main() { float a = 1.0; float b = 2.0; gl_FragColor = vec4(a < b ? 1.0 : 0.0); }",
+            None,
+        );
+        assert_eq!(d.dialect, ShaderDialect::GlslStandalone);
+        assert_eq!(d.signal, DialectSignal::VoidMain);
+    }
+
+    #[test]
+    fn ignores_wgsl_entry_point_signal_inside_comments() {
+        // Le texte `@fragment fn` dans un commentaire ne doit jamais faire
+        // basculer un shader GLSL vers WGSL — couvert structurellement par
+        // `strip_comments`, documenté ici par un test dédié.
+        let d = det(
+            "// @fragment fn fs_main() {}\nvoid main() { gl_FragColor = vec4(1.0); }",
+            None,
+        );
+        assert_eq!(d.dialect, ShaderDialect::GlslStandalone);
+        assert_eq!(d.signal, DialectSignal::VoidMain);
+
+        let d2 = det(
+            "/* @fragment\nfn fs_main() {} */\nvoid main() { gl_FragColor = vec4(1.0); }",
+            None,
+        );
+        assert_eq!(d2.dialect, ShaderDialect::GlslStandalone);
+        assert_eq!(d2.signal, DialectSignal::VoidMain);
+    }
+
+    #[test]
+    fn no_signal_keeps_previous_wgsl_mode() {
+        let d = det("fn helper(x: f32) -> f32 { return x + 1.0; }\n", Some(ShaderDialect::Wgsl));
+        assert_eq!(d.dialect, ShaderDialect::Wgsl);
+        assert_eq!(d.signal, DialectSignal::NoneKept);
     }
 
     #[test]
