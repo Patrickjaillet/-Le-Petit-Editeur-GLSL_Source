@@ -1,8 +1,16 @@
 # Architecture — ajouter un nouveau langage/dialecte
 
-Ce document explique comment brancher un futur langage (WGSL, HLSL, Slang...)
-dans le pipeline actuel, qui ne connaît aujourd'hui que deux dialectes GLSL :
-`shadertoy` (wrapper `mainImage`) et `glsl` (GLSL standalone, `void main()`).
+Ce document explique comment brancher un futur **dialecte d'entrée** (un langage que
+l'utilisateur peut coller dans l'éditeur et faire compiler/rendre) dans le pipeline actuel.
+Trois dialectes d'entrée existent aujourd'hui : `shadertoy` (wrapper `mainImage`), `glsl`
+(GLSL standalone, `void main()`) et `wgsl` (`@fragment fn ...`, ajouté en suivant très
+exactement la procédure ci-dessous — voir `RMLG.md`, section 1, pour le détail de son
+ajout réel).
+
+**⚠️ Cette procédure ne s'applique pas à tous les langages.** Un futur septième langage
+n'est pas forcément un candidat à ce document : voir l'encadré « Dialecte d'entrée vs
+cible d'export », juste en dessous, avant de commencer quoi que ce soit sur un nouveau
+langage.
 
 Voir `roadmap1.md`, section « Architecture extensible pour de futurs
 langages » pour le contexte et les décisions de conception. Ce fichier est la
@@ -14,6 +22,32 @@ données statiques (`Vec`/tableaux de fonctions), suffisants tant qu'un seul
 langage supplémentaire concret n'est pas réellement sur la table. Un système
 de plugins plus lourd resterait possible plus tard sans que la forme actuelle
 ait à être jetée.
+
+## Dialecte d'entrée vs cible d'export
+
+Avant d'appliquer ce document à un nouveau langage, vérifier lequel des deux cas
+s'applique — ce sont deux procédures différentes, documentées à deux endroits
+différents :
+
+- **Dialecte d'entrée** (ce document) : le langage a un frontend `naga` (`*-in`) capable
+  de le *parser*, donc un utilisateur peut réellement le coller dans l'éditeur et le
+  faire détecter/compiler/rendre en direct. C'est le cas de `shadertoy`/`glsl`/`wgsl`
+  aujourd'hui — suivre les sections 1 à 3 ci-dessous.
+- **Cible d'export** : le langage n'a qu'un backend `naga` (`*-out`, écriture seule),
+  jamais de frontend — `naga` sait le *produire* à partir d'un module IR déjà validé,
+  jamais le *lire*. C'est le cas de HLSL et MSL : ils ne sont **jamais** ajoutés à
+  `ShaderDialect`/`ShaderDialect::ALL`, ne passent jamais par `dialect.rs`
+  (détection) ni par `COMPILE_BACKENDS` (compilation live), et n'apparaissent jamais
+  dans l'indicateur de dialecte du footer. Ils sont exposés comme une fonctionnalité
+  d'export ponctuelle (`Fichier → Exporter le shader compilé vers…`,
+  `shader::export_shader_as`/`ExportTarget`), avec sa propre procédure documentée dans
+  `RMLG.md`, section 2 (matrice de faisabilité en tête de fichier, section 2.1 pour la
+  justification complète du choix « export seul »).
+
+Un futur contributeur qui envisage d'ajouter un langage doit d'abord vérifier, dans la
+documentation `naga`, s'il dispose d'un frontend (`*-in`) ou seulement d'un backend
+(`*-out`) — cette seule information détermine laquelle des deux procédures s'applique,
+avant même de commencer à écrire du code.
 
 ## Vue d'ensemble
 

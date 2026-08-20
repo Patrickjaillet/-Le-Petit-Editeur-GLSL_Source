@@ -8,6 +8,7 @@ the 5 passes (Image, Buffer A-D) has its own independent set of 4 slots;
 from __future__ import annotations
 
 import random
+from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
@@ -24,24 +25,37 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSlider,
+    QSpinBox,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+import workspace_dirs
 from audio_source import AUDIO_EXTENSIONS
 from i18n import tr
 from video_source import VIDEO_EXTENSIONS, list_cameras
 
 THUMB_SIZE = 64
-IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".bmp")
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp")
 _THUMB_STYLE = "background:#222; border:1px solid #444;"
 _THUMB_STYLE_DRAG_OVER = "background:#223; border:2px dashed #6cf;"
+# RM10.md section 5: a file dragged over a slot that isn't an
+# image/video/audio the app recognizes gets this look instead of looking
+# identical to an accepted drag (or, worse, no feedback at all) --
+# `dropEvent` follows up with an explicit message naming the rejected
+# extension once actually dropped, see `_first_droppable_path`.
+_THUMB_STYLE_DRAG_REJECTED = "background:#422; border:2px dashed #a44;"
 _THUMB_STYLE_BUFFER = "background:#243; border:1px solid #4a6; color:#9e9;"
 _THUMB_STYLE_CUBEMAP = "background:#233; border:1px solid #46a; color:#9cf;"
 _THUMB_STYLE_KEYBOARD = "background:#332; border:1px solid #a94; color:#fc9;"
 _THUMB_STYLE_VIDEO = "background:#423; border:1px solid #a4a; color:#fcf;"
 _THUMB_STYLE_WEBCAM = "background:#234; border:1px solid #48a; color:#9df;"
 _THUMB_STYLE_AUDIO = "background:#342; border:1px solid #6a4; color:#9f9;"
+# RM10.md section 1, item 6: a live source (webcam/video/audio) that fails
+# or disconnects mid-use gets this look instead of silently going blank.
+_THUMB_STYLE_DISCONNECTED = "background:#422; border:1px solid #a44; color:#fbb;"
 
 # Cubemap face order matches Shadertoy/WebGPU convention: this is exactly
 # the array-layer order a `Cube`-dimension texture view interprets its 6
@@ -180,14 +194,54 @@ class _CubemapDialog(QDialog):
 
     def _browse(self, edit: QLineEdit) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, tr("dialogs.cubemap.choose_face_image"), "", _image_filter(),
+            self, tr("dialogs.cubemap.choose_face_image"),
+            str(workspace_dirs.dir_for("ichannel_cubemaps")), _image_filter(),
         )
         if path:
             edit.setText(path)
 
     def _on_accept(self) -> None:
-        if any(not e.text() for e in self._edits):
+        # RM10.md section 5: catches a missing/renamed file, or a face
+        # whose dimensions don't match the others, right here in the
+        # dialog -- rather than only after it's already closed, once the
+        # engine gets around to actually loading the 6 files and rejects
+        # the assignment with a message the user has to go hunting for
+        # (see `_apply_ichannel_assignment`'s error path).
+        paths = [e.text() for e in self._edits]
+        if any(not p for p in paths):
             QMessageBox.warning(self, tr("dialogs.cubemap.missing_faces_title"), tr("dialogs.cubemap.missing_faces_body"))
+            return
+        missing = [label for label, p in zip(_CUBE_FACE_LABELS, paths) if not Path(p).is_file()]
+        if missing:
+            QMessageBox.warning(
+                self, tr("dialogs.cubemap.missing_faces_title"),
+                tr("dialogs.cubemap.file_not_found_body", faces=", ".join(missing)),
+            )
+            return
+        # Dimension checks are done with `QImage` (Qt's own decoders)
+        # purely as an early, friendlier heads-up -- a format Qt can't
+        # read but the Rust `image` crate can (isNull() below) is silently
+        # skipped here rather than blocked, leaving the engine's own
+        # `from_cubemap_files` as the final authority either way.
+        problems = []
+        ref_size: int | None = None
+        for label, path in zip(_CUBE_FACE_LABELS, paths):
+            img = QImage(path)
+            if img.isNull():
+                continue
+            if img.width() != img.height():
+                problems.append(
+                    tr("dialogs.cubemap.face_not_square", face=label, width=img.width(), height=img.height())
+                )
+                continue
+            if ref_size is None:
+                ref_size = img.width()
+            elif img.width() != ref_size:
+                problems.append(
+                    tr("dialogs.cubemap.face_size_mismatch", face=label, size=img.width(), expected=ref_size)
+                )
+        if problems:
+            QMessageBox.warning(self, tr("dialogs.cubemap.missing_faces_title"), "\n".join(problems))
             return
         self.accept()
 
@@ -239,6 +293,34 @@ def _procedural_preview(key: str) -> QPixmap:
     return pix
 
 
+def _cubemap_montage(paths: list) -> QPixmap:
+    """RM10.md section 5: a 3x2 grid thumbnail (+X -X +Y / -Y +Z -Z, same
+    reading order as `_CUBE_FACE_LABELS`/the assign dialog) so which face
+    got which file is visible at a glance in the slot itself, not just the
+    +X face alone. An empty/unreadable cell is left as a plain dark
+    square -- still informative (that face has nothing usable), not an
+    error in this purely cosmetic preview."""
+    pix = QPixmap(THUMB_SIZE, THUMB_SIZE)
+    pix.fill(QColor(30, 30, 40))
+    cols, rows = 3, 2
+    cell_w, cell_h = THUMB_SIZE // cols, THUMB_SIZE // rows
+    painter = QPainter(pix)
+    for i in range(6):
+        path = paths[i] if i < len(paths) else ""
+        cx, cy = (i % cols) * cell_w, (i // cols) * cell_h
+        if path:
+            face_pixmap = QPixmap(path)
+            if not face_pixmap.isNull():
+                scaled = face_pixmap.scaled(
+                    cell_w, cell_h, Qt.IgnoreAspectRatio, Qt.SmoothTransformation
+                )
+                painter.drawPixmap(cx, cy, scaled)
+        painter.setPen(QColor(70, 70, 90))
+        painter.drawRect(cx, cy, cell_w - 1, cell_h - 1)
+    painter.end()
+    return pix
+
+
 class _ChannelSlot(QWidget):
     # index, kind ("empty" | "image" | "video" | "audio" | "webcam" |
     # "cubemap" | "keyboard" | "procedural" | "buffer"), value (None | image
@@ -246,12 +328,21 @@ class _ChannelSlot(QWidget):
     # ("" = system default) | list of 6 face paths | None | procedural
     # preset key | buffer_index)
     assignmentChanged = Signal(int, str, object)
+    # RM10.md section 5: channel_index, volume (0..1), muted -- independent
+    # of the system output volume, see `AudioChannelSource.set_volume`.
+    audioSettingsChanged = Signal(int, float, bool)
+    # RM10.md section 5: channel_index, scale (pattern size), seed.
+    proceduralSettingsChanged = Signal(int, int, int)
 
     def __init__(self, index: int, parent=None):
         super().__init__(parent)
         self.index = index
         self._kind = "empty"
         self._value = None
+        self._volume = 1.0
+        self._muted = False
+        self._procedural_scale = 8
+        self._procedural_seed = 0
         self.setAcceptDrops(True)
 
         box = QGroupBox(f"iChannel{index}")
@@ -275,6 +366,50 @@ class _ChannelSlot(QWidget):
         btn_row.addWidget(self._browse_btn)
         layout.addLayout(btn_row)
 
+        # RM10.md section 5: volume/mute for an audio iChannel, independent
+        # of the system output volume -- only ever shown for kind=="audio"
+        # (see `set_state`), built unconditionally here like every other
+        # per-kind widget in this row.
+        volume_row = QHBoxLayout()
+        self._mute_btn = QToolButton()
+        self._mute_btn.setCheckable(True)
+        self._mute_btn.setText("🔊")
+        self._mute_btn.setToolTip(tr("ichannel_panel.mute_tooltip"))
+        self._mute_btn.toggled.connect(self._on_mute_toggled)
+        volume_row.addWidget(self._mute_btn)
+        self._volume_slider = QSlider(Qt.Horizontal)
+        self._volume_slider.setRange(0, 100)
+        self._volume_slider.setValue(100)
+        self._volume_slider.setToolTip(tr("ichannel_panel.volume_tooltip"))
+        self._volume_slider.valueChanged.connect(self._on_volume_changed)
+        volume_row.addWidget(self._volume_slider)
+        self._volume_row_widget = QWidget()
+        self._volume_row_widget.setLayout(volume_row)
+        self._volume_row_widget.setVisible(False)
+        layout.addWidget(self._volume_row_widget)
+
+        # RM10.md section 5: pattern size ("scale" -- checker cell count /
+        # value-noise grid resolution, ignored by white noise but still
+        # shown for a consistent layout) and random seed, only ever shown
+        # for kind=="procedural" (see `set_state`).
+        procedural_row = QFormLayout()
+        self._scale_spin = QSpinBox()
+        self._scale_spin.setRange(1, 64)
+        self._scale_spin.setValue(8)
+        self._scale_spin.setToolTip(tr("ichannel_panel.procedural_scale_tooltip"))
+        self._scale_spin.valueChanged.connect(self._on_procedural_settings_changed)
+        procedural_row.addRow(tr("ichannel_panel.procedural_scale_label"), self._scale_spin)
+        self._seed_spin = QSpinBox()
+        self._seed_spin.setRange(0, 999_999)
+        self._seed_spin.setValue(0)
+        self._seed_spin.setToolTip(tr("ichannel_panel.procedural_seed_tooltip"))
+        self._seed_spin.valueChanged.connect(self._on_procedural_settings_changed)
+        procedural_row.addRow(tr("ichannel_panel.procedural_seed_label"), self._seed_spin)
+        self._procedural_row_widget = QWidget()
+        self._procedural_row_widget.setLayout(procedural_row)
+        self._procedural_row_widget.setVisible(False)
+        layout.addWidget(self._procedural_row_widget)
+
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(box)
@@ -297,20 +432,21 @@ class _ChannelSlot(QWidget):
             self._thumb.setPixmap(pixmap)
             self._thumb.setText("")
         elif kind == "cubemap" and value:
-            # Preview the +X face (first in the list) as a stand-in — not
-            # meant to look like an actual cube, just enough to confirm
-            # something's assigned and glance at one face.
+            # RM10.md section 5: a 3x2 montage of all 6 faces (not just
+            # +X) -- small, but enough to tell at a glance whether the
+            # right images landed on the right faces, since each cell sits
+            # in the same +X/-X/+Y/-Y/+Z/-Z reading order as the assign
+            # dialog above it. The tooltip spells out the same mapping in
+            # text, for when the thumbnail is too small to tell images
+            # apart by eye alone.
             self._thumb.setStyleSheet(_THUMB_STYLE_CUBEMAP)
-            first_face = value[0] if value else ""
-            if first_face:
-                pixmap = QPixmap(first_face).scaled(
-                    THUMB_SIZE, THUMB_SIZE, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                )
-                self._thumb.setPixmap(pixmap)
-                self._thumb.setText("")
-            else:
-                self._thumb.setPixmap(QPixmap())
-                self._thumb.setText(tr("ichannel_panel.thumb_cube"))
+            self._thumb.setPixmap(_cubemap_montage(value))
+            self._thumb.setText("" if any(value) else tr("ichannel_panel.thumb_cube"))
+            lines = [
+                f"{label}: {Path(path).name}" if path else f"{label}: —"
+                for label, path in zip(_CUBE_FACE_LABELS, value)
+            ]
+            self._thumb.setToolTip("\n".join(lines))
         elif kind == "procedural" and value:
             self._thumb.setStyleSheet(_THUMB_STYLE)
             self._thumb.setPixmap(_procedural_preview(value))
@@ -363,6 +499,74 @@ class _ChannelSlot(QWidget):
             "audio": tr("ichannel_panel.change_audio"),
             "webcam": tr("ichannel_panel.change_webcam"),
         }.get(kind, tr("ichannel_panel.browse")))
+        self._volume_row_widget.setVisible(kind == "audio")
+        self._procedural_row_widget.setVisible(kind == "procedural")
+
+    def set_procedural_settings(self, scale: int, seed: int) -> None:
+        """Restores this slot's pattern-size/seed controls without
+        emitting `proceduralSettingsChanged` -- same contract as
+        `set_audio_settings`."""
+        self._procedural_scale, self._procedural_seed = scale, seed
+        self._scale_spin.blockSignals(True)
+        self._scale_spin.setValue(scale)
+        self._scale_spin.blockSignals(False)
+        self._seed_spin.blockSignals(True)
+        self._seed_spin.setValue(seed)
+        self._seed_spin.blockSignals(False)
+
+    def _on_procedural_settings_changed(self, _value: int) -> None:
+        self._procedural_scale = self._scale_spin.value()
+        self._procedural_seed = self._seed_spin.value()
+        self.proceduralSettingsChanged.emit(self.index, self._procedural_scale, self._procedural_seed)
+
+    def set_audio_settings(self, volume: float, muted: bool) -> None:
+        """Restores this slot's volume/mute controls (e.g. when switching
+        which pass's slots are shown, or loading a project) without
+        emitting `audioSettingsChanged` -- the caller already knows the
+        value it's restoring."""
+        self._volume, self._muted = volume, muted
+        self._volume_slider.blockSignals(True)
+        self._volume_slider.setValue(int(round(volume * 100)))
+        self._volume_slider.blockSignals(False)
+        self._mute_btn.blockSignals(True)
+        self._mute_btn.setChecked(muted)
+        self._mute_btn.setText("🔇" if muted else "🔊")
+        self._mute_btn.blockSignals(False)
+
+    def _on_volume_changed(self, raw: int) -> None:
+        self._volume = raw / 100.0
+        self.audioSettingsChanged.emit(self.index, self._volume, self._muted)
+
+    def _on_mute_toggled(self, checked: bool) -> None:
+        self._muted = checked
+        self._mute_btn.setText("🔇" if checked else "🔊")
+        self.audioSettingsChanged.emit(self.index, self._volume, self._muted)
+
+    def set_live_thumbnail(self, pixmap: QPixmap) -> None:
+        """RM10.md section 5: applies a freshly decoded frame/waveform
+        snapshot to this slot's thumbnail -- only while it's still
+        actually showing that kind of live source, so a frame that
+        finishes decoding right after the slot has been reassigned away
+        from video/webcam/audio never overwrites whatever the new
+        assignment is now displaying."""
+        if self._kind not in ("video", "webcam", "audio"):
+            return
+        self._thumb.setPixmap(pixmap.scaled(
+            THUMB_SIZE, THUMB_SIZE, Qt.KeepAspectRatio, Qt.SmoothTransformation
+        ))
+        self._thumb.setText("")
+
+    def show_disconnected(self, message: str) -> None:
+        """RM10.md section 1, item 6: called when this slot's live source
+        (webcam/video/audio) fails or disconnects mid-use. The dropdown and
+        stored assignment are left untouched -- only the thumbnail changes
+        -- so reconnecting the same device and picking it again from the
+        combo (which re-triggers `_on_combo_changed`) is still one click
+        away, rather than the slot silently reverting to empty."""
+        self._thumb.setStyleSheet(_THUMB_STYLE_DISCONNECTED)
+        self._thumb.setPixmap(QPixmap())
+        self._thumb.setText("⚠")
+        self._thumb.setToolTip(tr("ichannel_panel.source_lost_tooltip", message=message))
 
     def state(self) -> tuple[str, object]:
         return self._kind, self._value
@@ -409,7 +613,8 @@ class _ChannelSlot(QWidget):
 
     def _pick_video_file(self) -> bool:
         path, _ = QFileDialog.getOpenFileName(
-            self, tr("ichannel_panel.choose_video", index=self.index), "", _video_filter(),
+            self, tr("ichannel_panel.choose_video", index=self.index),
+            str(workspace_dirs.dir_for("ichannel_videos")), _video_filter(),
         )
         if not path:
             return False
@@ -418,7 +623,8 @@ class _ChannelSlot(QWidget):
 
     def _pick_audio_file(self) -> bool:
         path, _ = QFileDialog.getOpenFileName(
-            self, tr("ichannel_panel.choose_audio", index=self.index), "", _audio_filter(),
+            self, tr("ichannel_panel.choose_audio", index=self.index),
+            str(workspace_dirs.dir_for("ichannel_audio")), _audio_filter(),
         )
         if not path:
             return False
@@ -449,8 +655,8 @@ class _ChannelSlot(QWidget):
         kind, value = _kind_value_for(combo_index)
         if kind == "image":
             path, _ = QFileDialog.getOpenFileName(
-                self, f"Choisir une image pour iChannel{self.index}", "",
-                "Images (*.png *.jpg *.jpeg *.bmp)",
+                self, f"Choisir une image pour iChannel{self.index}",
+                str(workspace_dirs.dir_for("ichannel_textures")), _image_filter(),
             )
             if not path:
                 self._revert_combo()
@@ -495,8 +701,8 @@ class _ChannelSlot(QWidget):
             self._pick_webcam()
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, f"Choisir une image pour iChannel{self.index}", "",
-            "Images (*.png *.jpg *.jpeg *.bmp)",
+            self, f"Choisir une image pour iChannel{self.index}",
+            str(workspace_dirs.dir_for("ichannel_textures")), _image_filter(),
         )
         if not path:
             return
@@ -531,16 +737,37 @@ class _ChannelSlot(QWidget):
         return None
 
     def dragEnterEvent(self, event) -> None:
-        if self._first_droppable_path(event.mimeData()) is not None:
+        mime_data = event.mimeData()
+        if self._first_droppable_path(mime_data) is not None:
             event.acceptProposedAction()
             self._thumb.setStyleSheet(_THUMB_STYLE_DRAG_OVER)
+        elif mime_data.hasUrls():
+            # RM10.md section 5: still accepted (rather than left for Qt's
+            # native drag cursor alone to signal, easy to miss) so
+            # `dropEvent` gets a chance to run and show an explicit
+            # in-app reason -- silently doing nothing on drop would be the
+            # exact thing this item exists to fix. Only for real local
+            # file drops though; a non-file drag (e.g. dragging selected
+            # text) is left alone entirely, same as before.
+            event.acceptProposedAction()
+            self._thumb.setStyleSheet(_THUMB_STYLE_DRAG_REJECTED)
 
     def dragLeaveEvent(self, event) -> None:
         self.set_state(self._kind, self._value)
 
     def dropEvent(self, event) -> None:
-        found = self._first_droppable_path(event.mimeData())
+        mime_data = event.mimeData()
+        found = self._first_droppable_path(mime_data)
         if found is None:
+            self.set_state(self._kind, self._value)  # restore the thumbnail's normal look
+            first_path = next(
+                (url.toLocalFile() for url in mime_data.urls() if url.toLocalFile()), ""
+            )
+            extension = Path(first_path).suffix or tr("dialogs.ichannel_drop_rejected.no_extension")
+            QMessageBox.warning(
+                self, tr("dialogs.ichannel_drop_rejected.title"),
+                tr("dialogs.ichannel_drop_rejected.body", extension=extension),
+            )
             return
         path, kind = found
         if kind == "video":
@@ -555,6 +782,10 @@ class _ChannelSlot(QWidget):
 class IChannelPanel(QWidget):
     # pass_index, channel_index, kind, value
     assignmentChanged = Signal(int, int, str, object)
+    # pass_index, channel_index, volume (0..1), muted
+    audioSettingsChanged = Signal(int, int, float, bool)
+    # pass_index, channel_index, scale, seed
+    proceduralSettingsChanged = Signal(int, int, int, int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -564,46 +795,159 @@ class IChannelPanel(QWidget):
         for i in range(4):
             slot = _ChannelSlot(i)
             slot.assignmentChanged.connect(self._on_slot_changed)
+            slot.audioSettingsChanged.connect(self._on_slot_audio_settings_changed)
+            slot.proceduralSettingsChanged.connect(self._on_slot_procedural_settings_changed)
             layout.addWidget(slot)
             self._slots.append(slot)
 
         self._active_pass = 0
         # pass_index -> [(kind, value), ...] x4
         self._assignments: dict[int, list[tuple[str, object]]] = {}
+        # (pass_index, channel_index) -> (volume, muted), audio slots only;
+        # absent means the default (1.0, False) -- see `_audio_settings_for`.
+        self._audio_settings: dict[tuple[int, int], tuple[float, bool]] = {}
+        # (pass_index, channel_index) -> (scale, seed), procedural slots
+        # only; absent means the default (8, 0) -- see
+        # `_procedural_settings_for`.
+        self._procedural_settings: dict[tuple[int, int], tuple[int, int]] = {}
 
     def _states_for(self, pass_index: int) -> list[tuple[str, object]]:
         return self._assignments.setdefault(pass_index, [("empty", None)] * 4)
 
+    def state_for(self, pass_index: int, channel_index: int) -> tuple[str, object]:
+        """Public accessor: current (kind, value) for a slot."""
+        return self._states_for(pass_index)[channel_index]
+
+    def _audio_settings_for(self, pass_index: int, channel_index: int) -> tuple[float, bool]:
+        return self._audio_settings.get((pass_index, channel_index), (1.0, False))
+
+    def audio_settings_for(self, pass_index: int, channel_index: int) -> tuple[float, bool]:
+        """Public accessor: current (volume, muted) for a slot, so
+        `MainWindow` can apply it to a freshly (re)started
+        `AudioChannelSource` -- e.g. swapping which audio file a slot
+        points to shouldn't silently reset an already-adjusted volume
+        back to 100%."""
+        return self._audio_settings_for(pass_index, channel_index)
+
+    def _procedural_settings_for(self, pass_index: int, channel_index: int) -> tuple[int, int]:
+        return self._procedural_settings.get((pass_index, channel_index), (8, 0))
+
+    def procedural_settings_for(self, pass_index: int, channel_index: int) -> tuple[int, int]:
+        """Public accessor: current (scale, seed) for a slot, so
+        `MainWindow` can pass it to `Engine.set_ichannel_procedural`."""
+        return self._procedural_settings_for(pass_index, channel_index)
+
     def set_active_pass(self, pass_index: int) -> None:
         self._active_pass = pass_index
         states = self._states_for(pass_index)
-        for slot, (kind, value) in zip(self._slots, states):
+        for channel_index, (slot, (kind, value)) in enumerate(zip(self._slots, states)):
             slot.set_state(kind, value)
+            volume, muted = self._audio_settings_for(pass_index, channel_index)
+            slot.set_audio_settings(volume, muted)
+            scale, seed = self._procedural_settings_for(pass_index, channel_index)
+            slot.set_procedural_settings(scale, seed)
 
     def _on_slot_changed(self, channel_index: int, kind: str, value) -> None:
         states = self._states_for(self._active_pass)
         states[channel_index] = (kind, value)
         self.assignmentChanged.emit(self._active_pass, channel_index, kind, value)
 
+    def _on_slot_audio_settings_changed(self, channel_index: int, volume: float, muted: bool) -> None:
+        self._audio_settings[(self._active_pass, channel_index)] = (volume, muted)
+        self.audioSettingsChanged.emit(self._active_pass, channel_index, volume, muted)
+
+    def _on_slot_procedural_settings_changed(self, channel_index: int, scale: int, seed: int) -> None:
+        self._procedural_settings[(self._active_pass, channel_index)] = (scale, seed)
+        self.proceduralSettingsChanged.emit(self._active_pass, channel_index, scale, seed)
+
     def project_data(self) -> dict:
-        """Serializable snapshot of every pass's channel assignments."""
-        return {
-            str(pass_index): [{"kind": k, "value": v} for k, v in states]
-            for pass_index, states in self._assignments.items()
-        }
+        """Serializable snapshot of every pass's channel assignments. An
+        audio channel's volume/mute is folded into its own entry (rather
+        than a separate top-level structure) so a project saved before
+        this existed still loads: `load_project_data` just defaults to
+        full volume/unmuted when the fields are absent."""
+        result = {}
+        for pass_index, states in self._assignments.items():
+            entries = []
+            for channel_index, (kind, value) in enumerate(states):
+                entry = {"kind": kind, "value": value}
+                if kind == "audio":
+                    volume, muted = self._audio_settings_for(pass_index, channel_index)
+                    entry["volume"] = volume
+                    entry["muted"] = muted
+                elif kind == "procedural":
+                    scale, seed = self._procedural_settings_for(pass_index, channel_index)
+                    entry["scale"] = scale
+                    entry["seed"] = seed
+                entries.append(entry)
+            result[str(pass_index)] = entries
+        return result
 
     def load_project_data(self, data: dict) -> None:
-        self._assignments = {
-            int(pass_index): [(item["kind"], item.get("value")) for item in items]
-            for pass_index, items in data.items()
-        }
+        self._assignments = {}
+        self._audio_settings = {}
+        self._procedural_settings = {}
+        for pass_index_str, items in data.items():
+            pass_index = int(pass_index_str)
+            states = []
+            for channel_index, item in enumerate(items):
+                kind, value = item["kind"], item.get("value")
+                states.append((kind, value))
+                if kind == "audio":
+                    volume = item.get("volume", 1.0)
+                    muted = item.get("muted", False)
+                    try:
+                        volume = max(0.0, min(1.0, float(volume)))
+                    except (TypeError, ValueError):
+                        volume = 1.0
+                    self._audio_settings[(pass_index, channel_index)] = (volume, bool(muted))
+                elif kind == "procedural":
+                    try:
+                        scale = max(1, min(64, int(item.get("scale", 8))))
+                    except (TypeError, ValueError):
+                        scale = 8
+                    try:
+                        seed = max(0, min(999_999, int(item.get("seed", 0))))
+                    except (TypeError, ValueError):
+                        seed = 0
+                    self._procedural_settings[(pass_index, channel_index)] = (scale, seed)
+            self._assignments[pass_index] = states
         self.set_active_pass(self._active_pass)
 
+    def update_live_thumbnail(self, pass_index: int, channel_index: int, pixmap: QPixmap) -> None:
+        """RM10.md section 5: refreshes a video/webcam/audio slot's
+        thumbnail with a real, live snapshot of its actual content
+        (a decoded frame, or a waveform sparkline) instead of the fixed
+        icon it showed before this existed. Silently dropped if the pass
+        isn't the one currently displayed, or if the slot's kind has since
+        changed to something else (a frame decoded just before a
+        reassignment landing on the wrong, now-unrelated thumbnail) --
+        both `_ChannelSlot.set_live_thumbnail` and this check exist for
+        exactly that race, same spirit as `_video_frame_callback`'s own
+        stale-slot guard on the engine side."""
+        if pass_index != self._active_pass:
+            return
+        if channel_index >= len(self._slots):
+            return
+        self._slots[channel_index].set_live_thumbnail(pixmap)
+
+    def show_slot_disconnected(self, pass_index: int, channel_index: int, message: str) -> None:
+        """RM10.md section 1, item 6. Only visibly updates the slot if
+        `pass_index` is the one currently displayed -- a source lost on a
+        pass that isn't shown right now has nothing to visually update yet,
+        it'll simply be gone (kind reset by the caller) once/if the user
+        switches back to that pass."""
+        if pass_index == self._active_pass:
+            self._slots[channel_index].show_disconnected(message)
+
     def all_assignments(self):
-        """Every (pass_index, channel_index, kind, value) currently set,
-        e.g. to push a freshly loaded project into the render engine."""
+        """Every (pass_index, channel_index, kind, value, volume, muted)
+        currently set, e.g. to push a freshly loaded project into the
+        render engine -- `volume`/`muted` are only meaningful when
+        `kind == "audio"`, (1.0, False) otherwise."""
         result = []
         for pass_index, states in self._assignments.items():
             for channel_index, (kind, value) in enumerate(states):
-                result.append((pass_index, channel_index, kind, value))
+                volume, muted = self._audio_settings_for(pass_index, channel_index)
+                result.append((pass_index, channel_index, kind, value, volume, muted))
         return result

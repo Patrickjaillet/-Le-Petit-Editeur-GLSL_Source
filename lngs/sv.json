@@ -5,8 +5,9 @@
     "englishName": "Swedish"
   },
   "app": {
-    "window_title": "Petit Editeur GLSL v{version}",
-    "toolbar_name": "Huvud"
+    "window_title": "Petit Editeur GLSL v{version} [*]",
+    "toolbar_name": "Huvud",
+    "window_title_file": "{filename} [*] — Petit Editeur GLSL v{version}"
   },
   "tabs": {
     "image": "Bild",
@@ -28,6 +29,9 @@
       "save_as": "Spara &som…",
       "save_project": "Spara &projektet som…",
       "export_golfed": "&Exportera golfad kod…",
+      "export_compiled_menu": "Exportera kompilerad shader till",
+      "export_hlsl": "HLSL (.hlsl)…",
+      "export_msl": "Metal (.metal)…",
       "export_png": "Exportera en &bild (PNG)…",
       "export_video": "Exportera en &video (MP4)…",
       "preferences": "&Inställningar…",
@@ -40,6 +44,7 @@
       "golf": "&Golfa koden",
       "golf_all": "Golfa &hela projektet",
       "undo_golf": "Ångra &golfen",
+      "degolf": "&Avgolfa koden",
       "shortcuts": "&Kortkommandon…"
     },
     "help": {
@@ -54,7 +59,9 @@
     "play_pause_tooltip": "Spela upp/pausa tiden (iTime) — animerar även reglage med nyckelbilder",
     "reset_time": "Återställ tiden",
     "reset_time_tooltip": "Återställer iTime till 0 — praktiskt för att spela upp en nyckelbildssekvens från början igen",
-    "golf": "Golf 🏌"
+    "golf": "Golf 🏌",
+    "degolf": "Avgolfa 🧹",
+    "degolf_tooltip": "Formaterar om koden (indrag, en sats per rad, mellanslag) utan att byta namn på något eller ändra dess beteende"
   },
   "actions": {
     "file.new": "Arkiv: Nytt",
@@ -64,6 +71,8 @@
     "file.save_as": "Arkiv: Spara som…",
     "file.save_project": "Arkiv: Spara projektet som…",
     "file.export_golfed": "Arkiv: Exportera golfad kod…",
+    "file.export_hlsl": "Arkiv: Exportera till HLSL…",
+    "file.export_msl": "Arkiv: Exportera till Metal (MSL)…",
     "file.export_png": "Arkiv: Exportera en bild (PNG)…",
     "file.export_video": "Arkiv: Exportera en video (MP4)…",
     "file.preferences": "Arkiv: Inställningar…",
@@ -76,9 +85,14 @@
     "toolbar.compile": "Verktygsfält: Kompilera",
     "toolbar.play_pause": "Verktygsfält: Spela upp/Pausa",
     "toolbar.reset_time": "Verktygsfält: Återställ tiden",
-    "toolbar.golf": "Verktygsfält: Golf"
+    "toolbar.golf": "Verktygsfält: Golf",
+    "edit.degolf": "Redigera: Avgolfa koden",
+    "toolbar.degolf": "Verktygsfält: Avgolfa"
   },
   "dialogs": {
+    "common": {
+      "open_folder_button": "Öppna mapp"
+    },
     "about": {
       "title": "Om",
       "body": "Le Petit Editeur GLSL — version {version}\nCopyright © 2026 Patrick JAILLET — Alla rättigheter förbehållna\nE-post: sandefjord.development@proton.me\nWebbplats: https://patrickjaillet.github.io/Le-Petit-Editeur-GLSL"
@@ -113,6 +127,10 @@
       "body": "Den golfade koden går inte längre att kompilera — redigeraren lämnades oförändrad. Det här är troligen ett fel i golfverktyget, vänligen rapportera det.\n\nKompileringsfel:\n{error}",
       "body_all_or_nothing": "[{label}] den golfade koden går inte längre att kompilera (med Gemensam golfad) — inget ändrades (allt eller inget).\n\nKompileringsfel:\n{error}"
     },
+    "degolf_cancelled": {
+      "title": "Avgolfning avbruten",
+      "body": "Den omformaterade koden går inte längre att kompilera — redigeraren ändrades inte. Det är troligen ett fel i avgolfaren, rapportera gärna det.\n\nKompileringsfel:\n{error}"
+    },
     "undo_golf": {
       "title": "Ångra golfen",
       "body": "Ingen golf att ångra."
@@ -123,11 +141,15 @@
     },
     "golf_all_result": {
       "title": "Golfa hela projektet",
-      "body": "{pass_count} pass + Gemensam golfad: {before} -> {after} byte (-{percent}%)."
+      "body": "{pass_count} pass + Gemensam golfad: {before} -> {after} byte (-{percent}%).\n\n{breakdown}",
+      "per_pass_line": "{label}: {before} -> {after} byte (-{percent}%)"
     },
     "unsaved_changes": {
       "title": "Osparade ändringar",
-      "body": "Det aktuella projektet har osparade ändringar. Fortsätta och förlora dem?"
+      "body": "Det aktuella projektet har osparade ändringar. Fortsätta och förlora dem?",
+      "save_button": "Spara",
+      "discard_button": "Spara inte",
+      "cancel_button": "Avbryt"
     },
     "open_shader": {
       "title": "Öppna en shader",
@@ -135,7 +157,8 @@
     },
     "open_project": {
       "title": "Öppna ett projekt",
-      "filter": "Projekt (*.json)"
+      "filter": "Projekt (*.json)",
+      "future_format_warning": "Det här projektet sparades med en nyare version av programvaran (format {file_format}, den här versionen känner bara till format {current_format}). Vissa inställningar kanske inte laddas korrekt — överväg att uppdatera programvaran."
     },
     "open_error": {
       "title": "Öppna",
@@ -160,15 +183,32 @@
     },
     "save_project": {
       "title": "Spara projektet",
-      "filter": "Projekt (*.json)"
+      "filter": "Projekt (*.json)",
+      "export_success": "Projektet sparades:\n{path}"
     },
     "export_golfed": {
       "title": "Exportera golfad kod",
-      "filter": "GLSL (*.frag *.glsl)"
+      "filter": "GLSL (*.frag *.glsl)",
+      "export_success": "Golfad kod exporterades:\n{path}"
+    },
+    "export_shader": {
+      "title": "Exportera kompilerad shader",
+      "not_reeditable_hlsl": "Den genererade HLSL-filen är en trogen översättning av shadern så som den var kompilerad vid exporttillfället. Programmet kan inte läsa in HLSL igen: du kan inte klistra in den här .hlsl-filen i editorn för att fortsätta redigera den här — utgå alltid från GLSL/WGSL-källkoden för vidare ändringar.",
+      "not_reeditable_msl": "Den genererade Metal-filen (MSL) är en trogen översättning av shadern så som den var kompilerad vid exporttillfället. Programmet kan inte läsa in MSL igen: du kan inte klistra in den här .metal-filen i editorn för att fortsätta redigera den här — utgå alltid från GLSL/WGSL-källkoden för vidare ändringar.",
+      "bindings_caveat_hlsl": "Om den här shadern använder egna texturer eller inställningar (iChannel, uniforms), kopplar den exporterade filen dem enligt en automatisk konvention som kanske inte matchar den din målmotor förväntar sig: filen kan behöva en liten manuell justering innan den kompileras som den är.",
+      "bindings_caveat_msl": "Om den här shadern använder egna texturer eller inställningar (iChannel, uniforms), kopplar den exporterade filen dem enligt en automatisk konvention som kanske inte matchar den din målmotor förväntar sig: filen kan behöva en liten manuell justering innan den kompileras som den är.",
+      "pixel_fidelity_caveat": "Det finns ingen garanti för att en omkompilering av den här filen i en tredjepartsmotor ger en pixelidentisk rendering jämfört med förhandsgranskningen här — översättningen siktar på funktionell korrekthet, inte en avtalsmässigt garanterad bitexakt matchning; verifiera från fall till fall i din målmotor.",
+      "common_tab_body": "Fliken Common är inte en kompilerad pass i sig själv — välj en Buffer- eller Image-flik innan du exporterar till HLSL/Metal.",
+      "filter_hlsl": "HLSL (*.hlsl)",
+      "filter_msl": "Metal (*.metal)",
+      "failed_title": "Export avbruten",
+      "failed_body": "Översättningen av den här shadern misslyckades:\n\n{error}",
+      "export_success": "Filen exporterades:\n{path}"
     },
     "export_png": {
       "title": "Exportera en bild",
-      "nothing_to_export": "Inget att exportera just nu."
+      "nothing_to_export": "Inget att exportera just nu.",
+      "export_success": "Bilden exporterades:\n{path}"
     },
     "export_video": {
       "title": "Exportera en video (MP4)",
@@ -185,13 +225,25 @@
       "crf_preset_quality": "Kvalitet",
       "crf_preset_balanced": "Balanserad",
       "crf_preset_smallest": "Minsta storlek",
+      "audio_group": "Musik",
+      "audio_enable": "Lägg till ett ljudspår",
+      "audio_browse": "Bläddra…",
+      "audio_placeholder": "Ingen fil vald",
+      "audio_file_filter": "Ljud ({extensions})",
+      "audio_volume": "Volym",
+      "audio_start_offset": "Startpunkt",
+      "audio_bitrate": "Ljudkvalitet",
+      "audio_loop": "Loopa musiken om den är kortare än videon",
       "estimated_size": "Uppskattad storlek: ~{size}",
       "save_dialog_title": "Exportera en video",
       "save_dialog_default_name": "shader.mp4",
       "save_dialog_filter": "Video (*.mp4)",
       "ffmpeg_missing": "ffmpeg hittades inte ({path}).\n\nSe COMPILATION.md, avsnittet «Videoexport»: den förväntade binärfilen är packaging/bin/ffmpeg.exe.",
       "export_failed": "Export misslyckades:\n{error}",
-      "export_success": "Video exporterad utan problem ({frames} bilder, {width}×{height} @ {fps} fps):\n{path}"
+      "export_success": "Video exporterad utan problem ({frames} bilder, {width}×{height} @ {fps} fps):\n{path}",
+      "resolution_too_large": "Upplösningen {width}×{height} är för hög: det här grafikkortet stöder högst {max}px per sida. Välj en lägre upplösning.",
+      "resize_failed": "Det gick inte att förbereda exporten i den här upplösningen: {error}",
+      "restore_resolution_failed": "Varning: det gick inte att återställa den tidigare förhandsgranskningsupplösningen efter exporten: {error}"
     },
     "export_progress": {
       "title": "Exportera en video (MP4)",
@@ -209,7 +261,9 @@
       "shadertoy_api_key": "Shadertoy API-nyckel",
       "shadertoy_api_key_placeholder": "(tom = frågas igen vid nästa import)",
       "language": "Språk",
-      "language_restart_notice": "Språkändringen träder i kraft nästa gång applikationen startas."
+      "language_restart_notice": "Språkändringen träder i kraft nästa gång applikationen startas.",
+      "autosave_enabled": "Automatisk säkerhetskopiering",
+      "autosave_interval_minutes": "Säkerhetskopieringsintervall"
     },
     "shortcuts": {
       "title": "Kortkommandon",
@@ -227,7 +281,10 @@
       "face_row": "Sida {face}",
       "choose_face_image": "Välj en bild för sidan",
       "missing_faces_title": "Cubemap",
-      "missing_faces_body": "Alla 6 sidor måste fyllas i."
+      "missing_faces_body": "Alla 6 sidor måste fyllas i.",
+      "file_not_found_body": "Filen hittades inte för sida/sidor: {faces}.",
+      "face_not_square": "Sida {face}: {width}x{height} — en cubemap-sida måste vara kvadratisk.",
+      "face_size_mismatch": "Sida {face}: {size}x{size}, förväntade {expected}x{expected} (som de andra redan valda sidorna)."
     },
     "slider_bounds": {
       "title": "Reglagegränser",
@@ -235,6 +292,12 @@
       "max": "Max",
       "decimals": "Decimaler",
       "menu_edit": "Redigera min / max…"
+    },
+    "keyframe_curve": {
+      "title": "Interpolationskurva",
+      "linear": "Linjär",
+      "ease": "Mjuk (ease)",
+      "step": "Steg"
     },
     "color_picker": {
       "title": "Välj en färg"
@@ -254,7 +317,23 @@
     },
     "ichannel_error": {
       "title": "iChannel"
-    }
+    },
+    "ichannel_drop_rejected": {
+      "title": "Filformat stöds inte",
+      "body": "Den här filen ({extension}) är inte ett bild-, video- eller ljudformat som stöds för en iChannel.",
+      "no_extension": "utan filändelse"
+    },
+    "crash_recovery": {
+      "title": "Återställa osparat arbete?",
+      "body": "Programmet stängdes inte normalt. En automatisk säkerhetskopia från {timestamp} finns tillgänglig: vill du återställa den?",
+      "restore_button": "Återställ",
+      "discard_button": "Ignorera"
+    },
+    "gpu_error": {
+      "title": "Grafikkortet stöds inte",
+      "body": "Kunde inte starta: inget kompatibelt grafikkort hittades på den här datorn.\n\nProva att uppdatera drivrutinerna för grafikkortet och starta sedan om programmet.\n\nTeknisk information: {error}"
+    },
+    "viewport_resize_error": "Förhandsgranskningen ändrades inte (otillräckligt grafikminne): {error}"
   },
   "sliders_panel": {
     "filter_placeholder": "Filtrera…",
@@ -278,6 +357,7 @@
     ],
     "add_keyframe_menu": "Lägg till en nyckelbild (t={time}s)",
     "clear_keyframes_menu": "Rensa nyckelbilder",
+    "edit_curve_menu": "Interpolationskurva…",
     "add_keyframe_tooltip": "Lägg till en nyckelbild vid aktuell tid (t={time}s)",
     "keyframe_button_tooltip": "Klick: lägg till/uppdatera vid t={time}s — högerklick: fler alternativ",
     "reset_category": "↺ Återställ kategori",
@@ -290,7 +370,7 @@
   "ichannel_panel": {
     "video_filter": "Videor (*.mp4 *.mov *.m4v *.avi *.mkv *.webm)",
     "audio_filter": "Ljud (*.mp3 *.wav *.ogg *.flac)",
-    "image_filter": "Bilder (*.png *.jpg *.jpeg *.bmp)",
+    "image_filter": "Bilder (*.png *.jpg *.jpeg *.bmp *.gif *.webp)",
     "source_empty": "Tom",
     "source_image": "Bild (fil)",
     "source_video": "Video (fil)…",
@@ -305,6 +385,12 @@
     "change_cubemap": "Redigera sidor…",
     "change_video": "Byt video…",
     "change_audio": "Byt ljud…",
+    "volume_tooltip": "Ljudingångens volym (oberoende av systemvolymen)",
+    "mute_tooltip": "Tyst",
+    "procedural_scale_label": "Mönsterstorlek",
+    "procedural_scale_tooltip": "Mönsterstorlek (antal celler / brusrutnätets upplösning)",
+    "procedural_seed_label": "Frö",
+    "procedural_seed_tooltip": "Slumpmässigt frö (0 = förvalets standardvärde)",
     "change_webcam": "Byt webbkamera…",
     "choose_video": "Välj en video för iChannel{index}",
     "choose_audio": "Välj en ljudfil för iChannel{index}",
@@ -312,16 +398,32 @@
     "procedural_suffix": "{label} (procedurell)",
     "thumb_empty": "tom",
     "thumb_cube": "KUB",
-    "default_webcam_tooltip": "standardwebbkamera"
+    "default_webcam_tooltip": "standardwebbkamera",
+    "source_lost_tooltip": "Källan förlorad: {message}"
   },
   "footer": {
     "fps": "FPS: {fps}",
+    "resolution": "{width}×{height} ({percent}%)",
+    "resolution_tooltip": "Faktisk renderingsupplösning som förhandsgranskningen använder, oberoende av fönsterstorleken.",
+    "render_scale_tooltip": "Renderingsskala för förhandsgranskning (sänk den för att hålla det flytande på en tung shader)",
     "ready": "Klar",
     "compile_ok": "Kompilerad OK",
     "compile_error": "Fel: {message}",
     "frame_time_tooltip": "Renderingstid per bildruta (röd stapel = långsammare än ~30 FPS)",
     "size_tooltip": "Obehandlad storlek och uppskattad gzip-storlek (en approximation av storleken som faktiskt överförs/lagras) före/efter golfning. Markören (< 2 KB / < 4 KB / < 8 KB) motsvarar de traditionella demoscene 4k/8k-tävlingströsklarna, baserat på den golfade obehandlade storleken — inte en nätjämförelse mot ett externt resultat.",
     "size_format": "{before} -> {after} byte (-{percent}%) | gzip {before_gz} -> {after_gz}{tier_suffix}",
-    "size_tier": "< {kb} KB"
+    "size_tier": "< {kb} KB",
+    "size_tier_approaching": "nära {kb} KB",
+    "dialect_shadertoy": "Shadertoy",
+    "dialect_glsl": "GLSL",
+    "dialect_wgsl": "WGSL",
+    "dialect_tooltip": "Läge {mode}, upptäckt via {signal}",
+    "dialect_signal_mainimage": "förekomst av mainImage()",
+    "dialect_signal_voidmain": "förekomst av void main()",
+    "dialect_signal_version": "förekomst av #version",
+    "dialect_signal_fragcolor": "förekomst av gl_FragColor",
+    "dialect_signal_wgslentrypoint": "förekomst av en WGSL-startpunkt @fragment fn",
+    "dialect_signal_wgsluniformorgeneric": "förekomst av var<uniform> eller en generisk WGSL-typ",
+    "dialect_signal_none": "föregående läge behållet (ingen signal upptäckt)"
   }
 }

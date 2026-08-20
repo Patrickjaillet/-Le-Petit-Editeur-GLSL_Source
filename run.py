@@ -5,7 +5,8 @@ Also doubles as two headless batch CLIs (no GUI/Qt window needed):
     python run.py --golf shader.frag shader.min.frag [--no-rename] [--no-dead-code]
 
     python run.py --export-mp4 projet.json sortie.mp4 --duration 10 --fps 30 --crf 23 \\
-        [--width 1920 --height 1080]
+        [--width 1920 --height 1080] [--audio musique.mp3 [--audio-volume 0] \\
+        [--audio-start 0] [--audio-loop 1] [--audio-bitrate 192]]
 
 By default both aggressive golf transforms (identifier renaming,
 dead-code elimination) are on, matching the editor's own default; pass
@@ -79,6 +80,11 @@ def _parse_export_mp4_args(args: list[str]) -> dict | None:
         "crf": int(opts.get("crf", "23")),
         "width": opts.get("width"),
         "height": opts.get("height"),
+        "audio": opts.get("audio"),
+        "audio_volume": float(opts.get("audio-volume", "0")),
+        "audio_start": float(opts.get("audio-start", "0")),
+        "audio_loop": opts.get("audio-loop", "1") != "0",
+        "audio_bitrate": int(opts.get("audio-bitrate", "192")),
     }
 
 
@@ -108,7 +114,8 @@ def _run_export_mp4_cli(args: list[str]) -> int:
     if parsed is None:
         print(
             "Usage: run.py --export-mp4 <projet.json> <sortie.mp4> --duration 10 --fps 30 "
-            "--crf 23 [--width 1920 --height 1080]",
+            "--crf 23 [--width 1920 --height 1080] [--audio musique.mp3 "
+            "[--audio-volume 0] [--audio-start 0] [--audio-loop 1] [--audio-bitrate 192]]",
             file=sys.stderr,
         )
         return 2
@@ -123,7 +130,30 @@ def _run_export_mp4_cli(args: list[str]) -> int:
     width = int(parsed["width"]) if parsed["width"] else default_width
     height = int(parsed["height"]) if parsed["height"] else default_height
 
-    engine = engine_bridge.Engine(width, height)
+    # RM10.md section 1, item 8: `max_texture_dimension()` is only known
+    # once a device/adapter actually exists (it's queried from the real
+    # GPU, see `renderer::Engine::new`), so a small throwaway engine is
+    # built first to check the requested resolution *before* attempting to
+    # allocate output textures at that size -- constructing `Engine(width,
+    # height)` directly at an oversized resolution would panic inside
+    # `wgpu`'s validation instead of failing cleanly.
+    engine = engine_bridge.Engine(64, 64)
+    max_dim = engine.max_texture_dimension()
+    if width > max_dim or height > max_dim:
+        print(
+            f"Erreur : résolution {width}x{height} demandée, mais cette carte "
+            f"graphique ne supporte que {max_dim}px maximum par côté.",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        engine.resize(width, height)
+    except RuntimeError as exc:
+        # Still possible even under `max_dim`: that limit is a per-axis
+        # dimension cap, not a VRAM budget -- see
+        # `renderer::Engine::resize`'s doc comment.
+        print(f"Erreur : {exc}", file=sys.stderr)
+        return 1
     engine.set_common(common_source)
     for pass_idx in engine_bridge.ALL_PASSES:
         source = pass_sources.get(pass_idx, "")
@@ -180,6 +210,11 @@ def _run_export_mp4_cli(args: list[str]) -> int:
             parsed["crf"],
             date,
             parsed["out"],
+            audio_path=parsed["audio"],
+            audio_volume_db=parsed["audio_volume"],
+            audio_start_offset=parsed["audio_start"],
+            audio_loop=parsed["audio_loop"],
+            audio_bitrate_kbps=parsed["audio_bitrate"],
             on_capture_progress=_on_capture,
             on_encode_progress=_on_encode,
         )

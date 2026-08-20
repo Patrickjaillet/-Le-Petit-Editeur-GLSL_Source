@@ -5,8 +5,9 @@
     "englishName": "Korean"
   },
   "app": {
-    "window_title": "쁘띠 에디터 GLSL v{version}",
-    "toolbar_name": "메인"
+    "window_title": "쁘띠 에디터 GLSL v{version} [*]",
+    "toolbar_name": "메인",
+    "window_title_file": "{filename} [*] — 쁘띠 에디터 GLSL v{version}"
   },
   "tabs": {
     "image": "Image",
@@ -28,6 +29,9 @@
       "save_as": "다른 이름으로 저장(&A)…",
       "save_project": "프로젝트를 다른 이름으로 저장(&J)…",
       "export_golfed": "골프 코드 내보내기(&E)…",
+      "export_compiled_menu": "컴파일된 셰이더 내보내기 대상",
+      "export_hlsl": "HLSL (.hlsl)…",
+      "export_msl": "Metal (.metal)…",
       "export_png": "이미지 내보내기(&I) (PNG)…",
       "export_video": "동영상 내보내기(&V) (MP4)…",
       "preferences": "환경설정(&P)…",
@@ -40,6 +44,7 @@
       "golf": "코드 골프(&G)",
       "golf_all": "프로젝트 전체 골프(&A)",
       "undo_golf": "골프 취소(&N)",
+      "degolf": "코드 정리(&F)",
       "shortcuts": "키보드 단축키(&K)…"
     },
     "help": {
@@ -54,7 +59,9 @@
     "play_pause_tooltip": "시간(iTime) 재생/일시정지 — 키프레임이 있는 슬라이더도 함께 애니메이션됩니다",
     "reset_time": "시간 초기화",
     "reset_time_tooltip": "iTime을 0으로 되돌립니다 — 키프레임 시퀀스를 처음부터 다시 재생할 때 유용합니다",
-    "golf": "골프 🏌"
+    "golf": "골프 🏌",
+    "degolf": "정리 🧹",
+    "degolf_tooltip": "코드를 다시 포맷합니다(들여쓰기, 줄당 하나의 문장, 공백) — 이름을 바꾸거나 동작을 변경하지 않습니다"
   },
   "actions": {
     "file.new": "파일: 새로 만들기",
@@ -64,6 +71,8 @@
     "file.save_as": "파일: 다른 이름으로 저장…",
     "file.save_project": "파일: 프로젝트를 다른 이름으로 저장…",
     "file.export_golfed": "파일: 골프 코드 내보내기…",
+    "file.export_hlsl": "파일: HLSL로 내보내기…",
+    "file.export_msl": "파일: Metal(MSL)로 내보내기…",
     "file.export_png": "파일: 이미지 내보내기 (PNG)…",
     "file.export_video": "파일: 동영상 내보내기 (MP4)…",
     "file.preferences": "파일: 환경설정…",
@@ -76,9 +85,14 @@
     "toolbar.compile": "도구 모음: 컴파일",
     "toolbar.play_pause": "도구 모음: 재생/일시정지",
     "toolbar.reset_time": "도구 모음: 시간 초기화",
-    "toolbar.golf": "도구 모음: 골프"
+    "toolbar.golf": "도구 모음: 골프",
+    "edit.degolf": "편집: 코드 정리",
+    "toolbar.degolf": "도구 모음: 정리"
   },
   "dialogs": {
+    "common": {
+      "open_folder_button": "폴더 열기"
+    },
     "about": {
       "title": "정보",
       "body": "쁘띠 에디터 GLSL — 버전 {version}\nCopyright © 2026 Patrick JAILLET — 모든 권리 보유\n이메일: sandefjord.development@proton.me\n웹사이트: https://patrickjaillet.github.io/Le-Petit-Editeur-GLSL"
@@ -121,13 +135,21 @@
       "body": "골프된 코드가 더 이상 컴파일되지 않습니다 — 편집기는 수정되지 않았습니다. 골퍼의 버그일 가능성이 높으니 신고해 주세요.\n\n컴파일 오류:\n{error}",
       "body_all_or_nothing": "[{label}] 골프된 코드가 더 이상 컴파일되지 않습니다(골프된 Common 포함) — 아무것도 수정되지 않았습니다(전부 아니면 전무).\n\n컴파일 오류:\n{error}"
     },
+    "degolf_cancelled": {
+      "title": "정리 취소됨",
+      "body": "다시 포맷된 코드가 더 이상 컴파일되지 않습니다 — 편집기는 변경되지 않았습니다. 정리 기능의 버그일 가능성이 높습니다. 신고해 주세요.\n\n컴파일 오류:\n{error}"
+    },
     "golf_all_result": {
       "title": "프로젝트 전체 골프",
-      "body": "패스 {pass_count}개 + Common 골프 완료: {before} -> {after} 바이트 (-{percent}%)."
+      "body": "패스 {pass_count}개 + Common 골프 완료: {before} -> {after} 바이트 (-{percent}%).\n\n{breakdown}",
+      "per_pass_line": "{label}: {before} -> {after} 바이트 (-{percent}%)"
     },
     "unsaved_changes": {
       "title": "저장되지 않은 변경 사항",
-      "body": "현재 프로젝트에 저장되지 않은 변경 사항이 있습니다. 계속 진행하고 잃어버리시겠습니까?"
+      "body": "현재 프로젝트에 저장되지 않은 변경 사항이 있습니다. 계속 진행하고 잃어버리시겠습니까?",
+      "save_button": "저장",
+      "discard_button": "저장 안 함",
+      "cancel_button": "취소"
     },
     "open_shader": {
       "title": "셰이더 열기",
@@ -135,7 +157,8 @@
     },
     "open_project": {
       "title": "프로젝트 열기",
-      "filter": "프로젝트 (*.json)"
+      "filter": "프로젝트 (*.json)",
+      "future_format_warning": "이 프로젝트는 더 최신 버전의 소프트웨어로 저장되었습니다(형식 {file_format}, 이 버전은 형식 {current_format}까지만 인식합니다). 일부 설정이 올바르게 로드되지 않을 수 있습니다 — 소프트웨어 업데이트를 고려해 주세요."
     },
     "open_error": {
       "title": "열기",
@@ -160,15 +183,32 @@
     },
     "save_project": {
       "title": "프로젝트 저장",
-      "filter": "프로젝트 (*.json)"
+      "filter": "프로젝트 (*.json)",
+      "export_success": "프로젝트가 저장되었습니다:\n{path}"
     },
     "export_golfed": {
       "title": "골프 코드 내보내기",
-      "filter": "GLSL (*.frag *.glsl)"
+      "filter": "GLSL (*.frag *.glsl)",
+      "export_success": "골프된 코드를 내보냈습니다:\n{path}"
+    },
+    "export_shader": {
+      "title": "컴파일된 셰이더 내보내기",
+      "not_reeditable_hlsl": "생성된 HLSL 파일은 내보내는 시점에 컴파일된 셰이더를 충실히 변환한 것입니다. 이 소프트웨어는 HLSL을 다시 읽어들일 수 없으므로, 이 .hlsl 파일을 편집기에 다시 붙여넣어 계속 편집할 수 없습니다 — 이후 수정은 항상 GLSL/WGSL 소스에서 시작하세요.",
+      "not_reeditable_msl": "생성된 Metal(MSL) 파일은 내보내는 시점에 컴파일된 셰이더를 충실히 변환한 것입니다. 이 소프트웨어는 MSL을 다시 읽어들일 수 없으므로, 이 .metal 파일을 편집기에 다시 붙여넣어 계속 편집할 수 없습니다 — 이후 수정은 항상 GLSL/WGSL 소스에서 시작하세요.",
+      "bindings_caveat_hlsl": "이 셰이더가 사용자 지정 텍스처나 설정(iChannel, uniform)을 사용하는 경우, 내보낸 파일은 자동 규칙에 따라 이를 연결합니다. 이 규칙이 대상 엔진이 기대하는 것과 다를 수 있으므로, 파일이 그대로 컴파일되기 전에 약간의 수동 조정이 필요할 수 있습니다.",
+      "bindings_caveat_msl": "이 셰이더가 사용자 지정 텍스처나 설정(iChannel, uniform)을 사용하는 경우, 내보낸 파일은 자동 규칙에 따라 이를 연결합니다. 이 규칙이 대상 엔진이 기대하는 것과 다를 수 있으므로, 파일이 그대로 컴파일되기 전에 약간의 수동 조정이 필요할 수 있습니다.",
+      "pixel_fidelity_caveat": "이 파일을 타사 엔진에서 다시 컴파일하더라도 여기 표시된 라이브 미리보기와 픽셀 단위로 완전히 동일한 렌더링 결과가 나온다는 보장은 없습니다 — 이 변환은 기능적 정확성을 목표로 하며, 계약상 보장되는 비트 단위의 정확한 일치가 아닙니다. 대상 엔진에서 사례별로 확인하세요.",
+      "common_tab_body": "Common 탭은 그 자체로 컴파일된 패스가 아닙니다 — HLSL/Metal로 내보내기 전에 Buffer 또는 Image 탭을 선택하세요.",
+      "filter_hlsl": "HLSL (*.hlsl)",
+      "filter_msl": "Metal (*.metal)",
+      "failed_title": "내보내기가 취소되었습니다",
+      "failed_body": "이 셰이더 변환에 실패했습니다:\n\n{error}",
+      "export_success": "파일을 내보냈습니다:\n{path}"
     },
     "export_png": {
       "title": "이미지 내보내기",
-      "nothing_to_export": "현재 내보낼 이미지가 없습니다."
+      "nothing_to_export": "현재 내보낼 이미지가 없습니다.",
+      "export_success": "이미지를 내보냈습니다:\n{path}"
     },
     "export_video": {
       "title": "동영상 내보내기 (MP4)",
@@ -185,13 +225,25 @@
       "crf_preset_quality": "품질 우선",
       "crf_preset_balanced": "균형",
       "crf_preset_smallest": "최소 용량",
+      "audio_group": "음악",
+      "audio_enable": "오디오 트랙 추가",
+      "audio_browse": "찾아보기…",
+      "audio_placeholder": "선택된 파일 없음",
+      "audio_file_filter": "오디오 ({extensions})",
+      "audio_volume": "볼륨",
+      "audio_start_offset": "시작 지점",
+      "audio_bitrate": "오디오 품질",
+      "audio_loop": "영상보다 짧으면 음악 반복 재생",
       "estimated_size": "예상 크기: ~{size}",
       "save_dialog_title": "동영상 내보내기",
       "save_dialog_default_name": "shader.mp4",
       "save_dialog_filter": "동영상 (*.mp4)",
       "ffmpeg_missing": "ffmpeg를 찾을 수 없습니다 ({path}).\n\nCOMPILATION.md의 \"동영상 내보내기\" 섹션을 참고하세요: packaging/bin/ffmpeg.exe 파일이 필요합니다.",
       "export_failed": "내보내기 실패:\n{error}",
-      "export_success": "동영상을 성공적으로 내보냈습니다({frames} 프레임, {width}×{height} @ {fps} fps):\n{path}"
+      "export_success": "동영상을 성공적으로 내보냈습니다({frames} 프레임, {width}×{height} @ {fps} fps):\n{path}",
+      "resolution_too_large": "해상도 {width}×{height}가 너무 높습니다: 이 그래픽 카드는 한 변당 최대 {max}px까지만 지원합니다. 더 작은 해상도를 선택하세요.",
+      "resize_failed": "이 해상도로 내보내기를 준비할 수 없습니다: {error}",
+      "restore_resolution_failed": "경고: 내보내기 후 이전 미리보기 해상도를 복원할 수 없습니다: {error}"
     },
     "export_progress": {
       "title": "동영상 내보내기 (MP4)",
@@ -209,7 +261,9 @@
       "shadertoy_api_key": "Shadertoy API 키",
       "shadertoy_api_key_placeholder": "(비워두면 다음 가져오기 때 다시 물어봅니다)",
       "language": "언어",
-      "language_restart_notice": "언어 변경 사항은 프로그램을 다시 시작해야 적용됩니다."
+      "language_restart_notice": "언어 변경 사항은 프로그램을 다시 시작해야 적용됩니다.",
+      "autosave_enabled": "자동 백업",
+      "autosave_interval_minutes": "백업 간격"
     },
     "shortcuts": {
       "title": "키보드 단축키",
@@ -227,7 +281,10 @@
       "face_row": "면 {face}",
       "choose_face_image": "면 이미지 선택",
       "missing_faces_title": "큐브맵",
-      "missing_faces_body": "6개 면 모두를 지정해야 합니다."
+      "missing_faces_body": "6개 면 모두를 지정해야 합니다.",
+      "file_not_found_body": "다음 면의 파일을 찾을 수 없습니다: {faces}.",
+      "face_not_square": "면 {face}: {width}x{height} — 큐브맵 면은 정사각형이어야 합니다.",
+      "face_size_mismatch": "면 {face}: {size}x{size}, 예상값 {expected}x{expected}(이미 선택된 다른 면과 동일해야 함)."
     },
     "slider_bounds": {
       "title": "슬라이더 범위",
@@ -235,6 +292,12 @@
       "max": "최대",
       "decimals": "소수 자릿수",
       "menu_edit": "최소/최대 수정…"
+    },
+    "keyframe_curve": {
+      "title": "보간 곡선",
+      "linear": "선형",
+      "ease": "부드럽게 (ease)",
+      "step": "계단식"
     },
     "color_picker": {
       "title": "색상 선택"
@@ -254,7 +317,23 @@
     },
     "ichannel_error": {
       "title": "iChannel"
-    }
+    },
+    "ichannel_drop_rejected": {
+      "title": "지원하지 않는 파일",
+      "body": "이 파일({extension})은 iChannel에서 지원하는 이미지, 동영상 또는 오디오 형식이 아닙니다.",
+      "no_extension": "확장자 없음"
+    },
+    "crash_recovery": {
+      "title": "저장되지 않은 작업을 복원하시겠습니까?",
+      "body": "소프트웨어가 정상적으로 종료되지 않았습니다. {timestamp}의 자동 백업을 사용할 수 있습니다. 복원하시겠습니까?",
+      "restore_button": "복원",
+      "discard_button": "무시"
+    },
+    "gpu_error": {
+      "title": "지원되지 않는 그래픽 카드",
+      "body": "시작할 수 없습니다: 이 컴퓨터에서 호환되는 그래픽 카드를 찾을 수 없습니다.\n\n그래픽 카드 드라이버를 업데이트한 후 소프트웨어를 다시 시작해 보세요.\n\n기술 세부 정보: {error}"
+    },
+    "viewport_resize_error": "미리보기 크기가 조정되지 않았습니다(그래픽 메모리 부족): {error}"
   },
   "sliders_panel": {
     "filter_placeholder": "필터…",
@@ -278,6 +357,7 @@
     ],
     "add_keyframe_menu": "키프레임 추가 (t={time}초)",
     "clear_keyframes_menu": "키프레임 지우기",
+    "edit_curve_menu": "보간 곡선…",
     "add_keyframe_tooltip": "현재 시점에 키프레임 추가 (t={time}초)",
     "keyframe_button_tooltip": "클릭: t={time}초에 추가/갱신 — 우클릭: 추가 옵션",
     "reset_category": "↺ 카테고리 초기화",
@@ -290,7 +370,7 @@
   "ichannel_panel": {
     "video_filter": "동영상 (*.mp4 *.mov *.m4v *.avi *.mkv *.webm)",
     "audio_filter": "오디오 (*.mp3 *.wav *.ogg *.flac)",
-    "image_filter": "이미지 (*.png *.jpg *.jpeg *.bmp)",
+    "image_filter": "이미지 (*.png *.jpg *.jpeg *.bmp *.gif *.webp)",
     "source_empty": "비어 있음",
     "source_image": "이미지(파일)",
     "source_video": "동영상(파일)…",
@@ -305,6 +385,12 @@
     "change_cubemap": "면 수정…",
     "change_video": "동영상 변경…",
     "change_audio": "오디오 변경…",
+    "volume_tooltip": "오디오 입력 볼륨(시스템 볼륨과 무관)",
+    "mute_tooltip": "음소거",
+    "procedural_scale_label": "패턴 크기",
+    "procedural_scale_tooltip": "패턴 크기(셀 개수 / 노이즈 격자 해상도)",
+    "procedural_seed_label": "시드",
+    "procedural_seed_tooltip": "무작위 시드(0 = 이 프리셋의 기본값)",
     "change_webcam": "웹캠 변경…",
     "choose_video": "iChannel{index}에 사용할 동영상 선택",
     "choose_audio": "iChannel{index}에 사용할 오디오 파일 선택",
@@ -312,16 +398,32 @@
     "procedural_suffix": "{label} (프로시저럴)",
     "thumb_empty": "비어 있음",
     "thumb_cube": "CUBE",
-    "default_webcam_tooltip": "기본 웹캠"
+    "default_webcam_tooltip": "기본 웹캠",
+    "source_lost_tooltip": "소스를 찾을 수 없음: {message}"
   },
   "footer": {
     "fps": "FPS: {fps}",
+    "resolution": "{width}×{height} ({percent}%)",
+    "resolution_tooltip": "미리보기가 실제로 사용하는 렌더링 해상도(창 크기와 무관).",
+    "render_scale_tooltip": "미리보기 렌더 배율(무거운 셰이더에서 부드럽게 유지하려면 낮추세요)",
     "ready": "준비됨",
     "compile_ok": "컴파일 성공",
     "compile_error": "오류: {message}",
     "frame_time_tooltip": "프레임당 렌더링 시간(빨간 막대 = 약 30 FPS보다 느림)",
     "size_tooltip": "골프 전/후의 원본 크기와 예상 gzip 크기(실제 전송/저장 크기의 근사치)입니다. 표시 기준(< 2KB / < 4KB / < 8KB)은 골프된 원본 크기를 기준으로 한 데모신 4k/8k 대회의 전통적인 용량 등급이며, 외부 점수와의 온라인 비교는 아닙니다.",
     "size_format": "{before} -> {after} 바이트 (-{percent}%) | gzip {before_gz} -> {after_gz}{tier_suffix}",
-    "size_tier": "< {kb}KB"
+    "size_tier": "< {kb}KB",
+    "size_tier_approaching": "{kb}KB에 근접",
+    "dialect_shadertoy": "Shadertoy",
+    "dialect_glsl": "GLSL",
+    "dialect_wgsl": "WGSL",
+    "dialect_tooltip": "{signal}(으)로 감지된 {mode} 모드",
+    "dialect_signal_mainimage": "mainImage() 존재",
+    "dialect_signal_voidmain": "void main() 존재",
+    "dialect_signal_version": "#version 존재",
+    "dialect_signal_fragcolor": "gl_FragColor 존재",
+    "dialect_signal_wgslentrypoint": "WGSL @fragment fn 진입점 존재",
+    "dialect_signal_wgsluniformorgeneric": "var<uniform> 또는 WGSL 제네릭 타입 존재",
+    "dialect_signal_none": "신호 없음, 이전 모드 유지"
   }
 }

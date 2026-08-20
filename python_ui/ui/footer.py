@@ -4,9 +4,9 @@ from __future__ import annotations
 import gzip
 from collections import deque
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPainter
-from PySide6.QtWidgets import QLabel, QStatusBar, QWidget
+from PySide6.QtWidgets import QComboBox, QLabel, QStatusBar, QWidget
 
 import engine_bridge
 from i18n import tr
@@ -15,6 +15,15 @@ FRAME_GRAPH_SAMPLES = 90
 FRAME_GRAPH_WIDTH = 120
 FRAME_GRAPH_HEIGHT = 22
 FRAME_GRAPH_MAX_MS = 33.0  # ~30 fps floor; bars clip above this
+
+# RM10.md section 4 "résolution de la prévisualisation indépendante de la
+# fenêtre" : lets a heavy shader stay smooth by rendering at a fraction of
+# the viewport's own pixel size (then upscaled to fill it, see
+# `Viewport.paintEvent`) instead of the window's full resolution. Ordered
+# 100% first so index 0 (the combo's default before any setting is
+# restored) is always full resolution -- never a silent, unexplained
+# downscale on first launch.
+RENDER_SCALE_OPTIONS = (1.0, 0.75, 0.5, 0.25)
 
 # Icône + couleur + clé i18n du libellé par id de dialecte (voir
 # `engine_bridge.DIALECT_SHADERTOY`/`DIALECT_GLSL`), pour un repérage
@@ -25,6 +34,7 @@ FRAME_GRAPH_MAX_MS = 33.0  # ~30 fps floor; bars clip above this
 _DIALECT_DISPLAY = {
     engine_bridge.DIALECT_SHADERTOY: ("🌈", "#64b5f6", "footer.dialect_shadertoy"),
     engine_bridge.DIALECT_GLSL: ("📄", "#ffb74d", "footer.dialect_glsl"),
+    engine_bridge.DIALECT_WGSL: ("🟪", "#ba68c8", "footer.dialect_wgsl"),
 }
 
 # Traditional demoscene compo size classes (4k/8k), checked against the
@@ -36,6 +46,24 @@ _DIALECT_DISPLAY = {
 # module baking translated text into a constant at import time (before
 # `i18n.load_language()` has run).
 GOLF_SIZE_TIERS = (2 * 1024, 4 * 1024, 8 * 1024)
+
+# RM10.md section 7: the tier landmark must be "mis en avant (couleur,
+# icône)" the instant it's approached or crossed, not just spelled out as
+# plain text easy to skim past. One (icon, color) pair per tier, tightest
+# limit first -- gold/silver/bronze reads instantly as "how good a score is
+# this" to the demoscene-compo crowd this feature is aimed at, without
+# needing to do the Ko math themselves.
+_GOLF_SIZE_TIER_STYLE = {
+    2 * 1024: ("🥇", "#4caf50"),
+    4 * 1024: ("🥈", "#8bc34a"),
+    8 * 1024: ("🥉", "#ff9800"),
+}
+# "Approaching" a tier from above (not yet under it, but close enough that
+# golfing a little further would cross it) gets its own, more urgent
+# marker -- red rather than the tier's own color, since the shader is not
+# actually under that limit yet.
+_APPROACHING_COLOR = "#f44336"
+_APPROACHING_MARGIN = 0.10  # within the last 10% above a limit counts as "approaching" it
 
 
 def golf_size_tier_label(after_bytes: int) -> str | None:
@@ -50,6 +78,25 @@ def golf_size_tier_label(after_bytes: int) -> str | None:
         if after_bytes <= limit:
             return tr("footer.size_tier", kb=limit // 1024)
     return None
+
+
+def golf_size_tier_html(after_bytes: int) -> str:
+    """Rich-text version of `golf_size_tier_label`: the same landmark, but
+    color+icon coded (green/gold going down to orange for 2K/4K/8K once
+    under a tier, red while still just above the nearest one within
+    `_APPROACHING_MARGIN` of it) — see the RM10.md note above. Returns an
+    empty string when there's nothing to show (not close to and not under
+    any known tier), same "no landmark" convention as the plain version.
+    """
+    for limit in GOLF_SIZE_TIERS:
+        if after_bytes <= limit:
+            icon, color = _GOLF_SIZE_TIER_STYLE[limit]
+            text = tr("footer.size_tier", kb=limit // 1024)
+            return f' | <span style="color:{color}; font-weight:600;">{icon} {text}</span>'
+        if after_bytes <= limit * (1.0 + _APPROACHING_MARGIN):
+            text = tr("footer.size_tier_approaching", kb=limit // 1024)
+            return f' | <span style="color:{_APPROACHING_COLOR}; font-weight:600;">⚠ {text}</span>'
+    return ""
 
 
 class FrameTimeGraph(QWidget):
@@ -87,20 +134,66 @@ class FrameTimeGraph(QWidget):
 
 
 class Footer(QStatusBar):
+    # Emitted with the newly chosen scale factor (one of `RENDER_SCALE_OPTIONS`)
+    # whenever the user picks a different entry in the render-scale combo box.
+    renderScaleChanged = Signal(float)
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self._fps_label = QLabel(tr("footer.fps", fps="--"))
         self._status_label = QLabel(tr("footer.ready"))
         self._size_label = QLabel("")
+        # RM10.md section 7: the demoscene-tier landmark appended to this
+        # label's text is color+icon coded HTML (`golf_size_tier_html`) --
+        # explicit here rather than relying on QLabel's Qt.AutoText
+        # sniffing to notice the embedded <span>.
+        self._size_label.setTextFormat(Qt.RichText)
         self._dialect_label = QLabel("")
         self._frame_graph = FrameTimeGraph()
+
+        # RM10.md section 4: the actual render resolution used by the
+        # engine, always shown plainly next to the combo box that controls
+        # it -- so a downscaled preview (chosen for fluidity on a heavy
+        # shader) is never a silent, easy-to-forget state.
+        self._resolution_label = QLabel("")
+        self._resolution_label.setToolTip(tr("footer.resolution_tooltip"))
+
+        self._scale_combo = QComboBox()
+        self._scale_combo.addItems([f"{int(round(s * 100))}%" for s in RENDER_SCALE_OPTIONS])
+        self._scale_combo.setToolTip(tr("footer.render_scale_tooltip"))
+        self._scale_combo.currentIndexChanged.connect(self._on_scale_index_changed)
 
         self.addWidget(self._status_label, 1)
         self.addPermanentWidget(self._size_label)
         self.addPermanentWidget(self._dialect_label)
         self.addPermanentWidget(self._frame_graph)
+        self.addPermanentWidget(self._resolution_label)
+        self.addPermanentWidget(self._scale_combo)
         self.addPermanentWidget(self._fps_label)
+
+    def _on_scale_index_changed(self, index: int) -> None:
+        if 0 <= index < len(RENDER_SCALE_OPTIONS):
+            self.renderScaleChanged.emit(RENDER_SCALE_OPTIONS[index])
+
+    def set_render_scale_silent(self, scale: float) -> None:
+        """Restores the combo box to `scale` (a persisted setting, or the
+        default at startup) without re-emitting `renderScaleChanged` --
+        the caller already knows the value it's restoring, and re-emitting
+        would just bounce it straight back through `MainWindow` for no
+        reason."""
+        try:
+            index = RENDER_SCALE_OPTIONS.index(scale)
+        except ValueError:
+            index = 0
+        self._scale_combo.blockSignals(True)
+        self._scale_combo.setCurrentIndex(index)
+        self._scale_combo.blockSignals(False)
+
+    def set_resolution(self, width: int, height: int, scale: float) -> None:
+        self._resolution_label.setText(tr(
+            "footer.resolution", width=width, height=height, percent=int(round(scale * 100)),
+        ))
 
     def set_fps(self, fps: float) -> None:
         self._fps_label.setText(tr("footer.fps", fps=f"{fps:.0f}"))
@@ -158,8 +251,7 @@ class Footer(QStatusBar):
         before_gz = len(gzip.compress(before_text.encode("utf-8")))
         after_gz = len(gzip.compress(after_text.encode("utf-8")))
         pct = 100.0 * (before - after) / before if before else 0.0
-        tier = golf_size_tier_label(after)
-        tier_suffix = f" | {tier}" if tier else ""
+        tier_suffix = golf_size_tier_html(after)
         self._size_label.setText(tr(
             "footer.size_format",
             before=before, after=after, percent=f"{pct:.0f}",

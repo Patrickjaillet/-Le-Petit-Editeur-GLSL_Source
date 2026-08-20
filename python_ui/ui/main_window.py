@@ -4,10 +4,11 @@ from __future__ import annotations
 import json
 import re
 import time
+from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QStandardPaths, QTimer, Qt
-from PySide6.QtGui import QAction
+from PySide6.QtCore import QSettings, QStandardPaths, QTimer, QUrl, Qt
+from PySide6.QtGui import QAction, QDesktopServices, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -34,14 +35,15 @@ from PySide6.QtWidgets import (
 import engine_bridge
 import shadertoy_import
 import video_export
+import workspace_dirs
 from app_version import APP_VERSION
 import i18n
 from i18n import tr
 from shortcuts import ShortcutRegistry
 from ui.export_progress_dialog import ExportProgressDialog
 from ui.export_video_dialog import ExportVideoDialog, record_actual_export_size
-from ui.footer import Footer
-from ui.ichannel_panel import IChannelPanel
+from ui.footer import RENDER_SCALE_OPTIONS, Footer
+from ui.ichannel_panel import THUMB_SIZE, IChannelPanel
 from ui.monaco_editor import MonacoEditor
 from ui.shortcuts_dialog import ShortcutsDialog
 from ui.sliders_panel import SlidersPanel
@@ -60,8 +62,20 @@ SLIDER_COMPILE_DEBOUNCE_MS = 100
 # stop recompiling for as long as the stream continues.
 MAX_COMPILE_DEBOUNCE_MS = 250
 
+# RM10.md section 5: minimum wall-clock gap between live thumbnail
+# refreshes for one video/webcam/audio iChannel slot -- see
+# `_thumb_last_update`.
+_THUMBNAIL_MIN_INTERVAL_S = 0.2
+
 _LINE_COL_RE = re.compile(r":(\d+):(\d+)")
 MAX_RECENT_FILES = 8
+
+# `_build_project_dict`'s own `"format"` field. RM10.md section 9: opening
+# a project written by a *newer* version of this software (a higher
+# number here than this build knows about) must warn explicitly rather
+# than silently loading whatever of it happens to still make sense --
+# see `_load_project`.
+PROJECT_FORMAT_VERSION = 3
 
 # The "Common" tab isn't a real render pass, just plain GLSL prepended to
 # every pass before compilation — it needs a slot in the tab bar but no
@@ -118,6 +132,13 @@ class MainWindow(QMainWindow):
         self._compile_burst_started_at: float | None = None
         self._pre_golf_source: str | None = None
         self._golf_options: tuple[bool, bool, bool] | None = (True, True, True)
+        # Path of the `.json` project (or bare `.frag`, display-only in that
+        # case -- see `_quick_save_current_project`'s suffix guard) most
+        # recently opened/saved/exported in this session, or `None` before
+        # anything has ever been. Drives the window title (`_update_window_title`)
+        # and is what a "Save" choice in the unsaved-changes dialog writes to
+        # when it's a real project path (RM10.md section 1, items 4/5).
+        self._current_project_path: str | None = None
         self._is_dirty = False
 
         # One live `VideoChannelSource` per (pass_idx, channel_idx) slot
@@ -140,6 +161,15 @@ class MainWindow(QMainWindow):
         # computed over a rolling window, not frame-by-frame as chunks
         # arrive.
         self._audio_sources: dict[tuple[int, int], AudioChannelSource] = {}
+
+        # RM10.md section 5: wall-clock time (`time.monotonic()`) each
+        # (pass, channel) video/webcam/audio slot's live thumbnail was last
+        # refreshed. Video/webcam frames and audio ticks both arrive far
+        # faster (~30-60fps / ~60/s) than a thumbnail glanced at by eye
+        # needs to update — this throttles refreshes to
+        # `_THUMBNAIL_MIN_INTERVAL_S` apart per slot instead of converting
+        # to a `QPixmap` and repainting on every single tick.
+        self._thumb_last_update: dict[tuple[int, int], float] = {}
 
         self._current_tab = engine_bridge.PASS_IMAGE
         self._pass_sources: dict[int, str] = {
@@ -198,7 +228,12 @@ class MainWindow(QMainWindow):
         self.editor.textChanged.connect(self._on_text_changed)
         self.editor.editorReady.connect(self._apply_editor_preferences)
 
-        self._load_default_shader()
+        self._autosave_timer = QTimer(self)
+        self._autosave_timer.timeout.connect(self._write_autosave)
+        self._apply_autosave_settings()
+
+        if not self._try_crash_recovery():
+            self._load_default_shader()
 
     # ---- UI construction -------------------------------------------------
 
@@ -223,6 +258,18 @@ class MainWindow(QMainWindow):
         save_project_action.triggered.connect(self._on_save_project)
         export_action = reg("file.export_golfed", QAction(tr("menu.file.export_golfed"), self))
         export_action.triggered.connect(self._on_export_golfed)
+        # Compiled-shader export (HLSL/MSL): a one-off translation of the
+        # pass currently shown in the editor, never a new tab/dialect --
+        # see RMLG.md section 2. Deliberately a submenu next to the golfed
+        # export rather than its own top-level menu entry, since it's the
+        # same family of "write this pass out to a file" actions.
+        export_compiled_menu = QMenu(tr("menu.file.export_compiled_menu"), self)
+        export_hlsl_action = reg("file.export_hlsl", QAction(tr("menu.file.export_hlsl"), self))
+        export_hlsl_action.triggered.connect(lambda: self._on_export_compiled_shader("hlsl"))
+        export_msl_action = reg("file.export_msl", QAction(tr("menu.file.export_msl"), self))
+        export_msl_action.triggered.connect(lambda: self._on_export_compiled_shader("msl"))
+        export_compiled_menu.addAction(export_hlsl_action)
+        export_compiled_menu.addAction(export_msl_action)
         export_png_action = reg("file.export_png", QAction(tr("menu.file.export_png"), self))
         export_png_action.triggered.connect(self._on_export_png)
         export_video_action = reg("file.export_video", QAction(tr("menu.file.export_video"), self))
@@ -234,7 +281,10 @@ class MainWindow(QMainWindow):
         for a in (new_action, open_action, open_project_action, import_shadertoy_action):
             file_menu.addAction(a)
         file_menu.addMenu(self._recent_menu)
-        for a in (save_action, save_project_action, export_action, export_png_action, export_video_action):
+        for a in (save_action, save_project_action, export_action):
+            file_menu.addAction(a)
+        file_menu.addMenu(export_compiled_menu)
+        for a in (export_png_action, export_video_action):
             file_menu.addAction(a)
         file_menu.addSeparator()
         file_menu.addAction(preferences_action)
@@ -251,6 +301,8 @@ class MainWindow(QMainWindow):
         golf_action.triggered.connect(self._on_golf)
         undo_golf_action = reg("edit.undo_golf", QAction(tr("menu.edit.undo_golf"), self))
         undo_golf_action.triggered.connect(self._on_undo_golf)
+        degolf_action = reg("edit.degolf", QAction(tr("menu.edit.degolf"), self))
+        degolf_action.triggered.connect(self._on_degolf)
         edit_menu.addAction(undo_action)
         edit_menu.addAction(redo_action)
         golf_all_action = reg("edit.golf_all", QAction(tr("menu.edit.golf_all"), self))
@@ -259,6 +311,7 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(golf_action)
         edit_menu.addAction(golf_all_action)
         edit_menu.addAction(undo_golf_action)
+        edit_menu.addAction(degolf_action)
         edit_menu.addSeparator()
         shortcuts_action = QAction(tr("menu.edit.shortcuts"), self)
         shortcuts_action.triggered.connect(self._on_edit_shortcuts)
@@ -299,6 +352,11 @@ class MainWindow(QMainWindow):
         golf_action.triggered.connect(self._on_golf)
         toolbar.addAction(golf_action)
 
+        degolf_action = reg("toolbar.degolf", QAction(tr("toolbar.degolf"), self))
+        degolf_action.setToolTip(tr("toolbar.degolf_tooltip"))
+        degolf_action.triggered.connect(self._on_degolf)
+        toolbar.addAction(degolf_action)
+
     def _build_central_widget(self) -> None:
         self.footer = Footer(self)
 
@@ -312,13 +370,41 @@ class MainWindow(QMainWindow):
             self.pass_tab_bar.addTab(tr(_TAB_LABEL_KEYS[tab_id]))
         self.pass_tab_bar.setCurrentIndex(_TAB_ORDER.index(engine_bridge.PASS_IMAGE))
         self.pass_tab_bar.currentChanged.connect(self._on_pass_tab_changed)
+        # RM10.md section 5: `IChannelPanel` defaults its own
+        # `_active_pass` to 0 (== `engine_bridge.PASS_BUFFER_A`), and
+        # `setCurrentIndex` just above never fires `currentChanged` (Qt
+        # only emits on an actual value change, and the tab bar is already
+        # at index 0 right after the `addTab` loop -- Image happens to be
+        # first in `_TAB_ORDER`) -- so without this, `ichannel_panel`
+        # would silently stay tracking Buffer A's slots while the editor/
+        # viewport are actually showing Image, until the user's first
+        # manual tab switch. Any iChannel assigned before that first
+        # switch would attach to the wrong pass in the engine, with no
+        # error and nothing visibly wrong in the UI to notice it by.
+        self.ichannel_panel.set_active_pass(engine_bridge.PASS_IMAGE)
 
         self.viewport.fpsUpdated.connect(self.footer.set_fps)
         self.viewport.renderError.connect(self._on_render_error)
+        self.viewport.resizeError.connect(self._on_viewport_resize_error)
         self.viewport.frameRendered.connect(self.footer.add_frame_time_sample)
         self.viewport.timeUpdated.connect(self.sliders_panel.set_time)
         self.viewport.timeUpdated.connect(self._on_audio_tick)
+        self.viewport.resolutionChanged.connect(self.footer.set_resolution)
+        self.footer.renderScaleChanged.connect(self._on_render_scale_changed)
+        self.footer.set_resolution(*self.viewport.render_size(), 1.0)
+        # RM10.md section 4: restores the user's last-chosen preview
+        # resolution across sessions (persisted below, in
+        # `_on_render_scale_changed`) rather than always silently reverting
+        # to 100% -- a shader heavy enough to need downscaling for fluidity
+        # is exactly the kind that would otherwise stutter again on every
+        # single launch until re-lowered by hand.
+        saved_scale = self._settings.value("renderScale", 1.0, type=float)
+        if saved_scale in RENDER_SCALE_OPTIONS and saved_scale != 1.0:
+            self.footer.set_render_scale_silent(saved_scale)
+            self.viewport.set_render_scale(saved_scale)
         self.ichannel_panel.assignmentChanged.connect(self._on_ichannel_assignment_changed)
+        self.ichannel_panel.audioSettingsChanged.connect(self._on_ichannel_audio_settings_changed)
+        self.ichannel_panel.proceduralSettingsChanged.connect(self._on_ichannel_procedural_settings_changed)
         self.sliders_panel.literalEdited.connect(self._on_literal_edited)
         self.sliders_panel.dragFinished.connect(self._on_slider_drag_finished)
 
@@ -384,6 +470,7 @@ class MainWindow(QMainWindow):
         text = self._common_source if new_tab == COMMON_TAB else self._pass_sources[new_tab]
         self.editor.set_value(text)
         self.editor.clear_error_marker()
+        self._update_editor_language(new_tab, text)
         if new_tab == COMMON_TAB:
             self.ichannel_panel.setEnabled(False)
         else:
@@ -474,12 +561,38 @@ class MainWindow(QMainWindow):
             # Le Common lui-même n'est pas un dialecte (pas de
             # mainImage/main() attendu) : l'indicateur garde le mode du
             # dernier onglet de pass affiché plutôt que d'être recalculé
-            # sur du texte qui ne le concerne pas.
+            # sur du texte qui ne le concerne pas. La coloration syntaxique
+            # de l'éditeur, elle, est une préoccupation séparée (RM10.md
+            # section 2, item 1) : Common peut légitimement contenir du
+            # WGSL (fonctions utilitaires sans point d'entrée) et mérite
+            # sa propre coloration correcte.
+            self._update_editor_language(COMMON_TAB, self._common_source)
             return
         source = self._pass_sources[self._current_tab]
         self._refresh_sliders_for(source)
         self._update_dialect_indicator(self._current_tab, source)
+        self._update_editor_language(self._current_tab, source)
         self._compile_one_pass(self._current_tab, source, show_marker=True)
+
+    def _update_editor_language(self, pass_idx: int, source: str) -> None:
+        """RM10.md section 2, item 1: switches Monaco's tokenizer
+        (`glsl`/`wgsl`, `index.html`) to match the *actually detected*
+        dialect of the text currently shown, so WGSL keywords stop being
+        highlighted as plain identifiers under the GLSL tokenizer. Kept
+        deliberately separate from `_update_dialect_indicator` (the footer
+        indicator, which only ever reflects a real pass's dialect, never
+        Common's -- see that function's own comment): Common's own text
+        can itself be written in WGSL (helper `fn`s with no entry point,
+        see `dialect::DialectSignal::WgslUniformOrGeneric`) and still
+        deserves correct highlighting, without pretending Common has a
+        "detected dialect" in the footer's sense.
+        """
+        if not source:
+            self.editor.set_language("glsl")
+            return
+        previous = self._pass_dialects.get(str(pass_idx), "")
+        dialect_id, _ = engine_bridge.detect_dialect(source, previous)
+        self.editor.set_language("wgsl" if dialect_id == engine_bridge.DIALECT_WGSL else "glsl")
 
     def _update_dialect_indicator(self, pass_idx: int, source: str) -> None:
         """Redétecte le dialecte (Shadertoy `mainImage` vs GLSL standalone
@@ -501,6 +614,17 @@ class MainWindow(QMainWindow):
 
     def _compile_one_pass(self, pass_idx: int, source: str, show_marker: bool) -> None:
         if not source:
+            # RM10.md section 4: an emptied pass tab (a Buffer nobody's
+            # using anymore, typically) must not just stop being
+            # *recompiled* — the last successfully-compiled pipeline was
+            # otherwise left running forever, still rendered (and costing
+            # GPU time) every single frame. `clear_pass` actually tears
+            # that pipeline down so `submit_frame` goes back to skipping
+            # this pass entirely, like one that was never compiled.
+            try:
+                self._engine.clear_pass(pass_idx)
+            except RuntimeError:
+                pass  # pass_idx is always one of this engine's own indices here; never expected
             return
         try:
             self._engine.compile_pass(pass_idx, source)
@@ -748,6 +872,46 @@ class MainWindow(QMainWindow):
         self.editor.replace_value(self._pre_golf_source)
         self._pre_golf_source = None
 
+    def _on_degolf(self) -> None:
+        self.editor.get_value(self._do_degolf)
+
+    def _do_degolf(self, source: str) -> None:
+        """Dé-golf (`engine_bridge.beautify_shader`): reformats the
+        current tab's source -- reindented, one statement per line, spaced
+        operators -- without renaming anything or otherwise changing what
+        it compiles to (see `beautify::beautify_shader`'s doc comment on
+        the Rust side for the exact guarantee). Unlike `_on_undo_golf`,
+        which only replays whatever this session's own last golf pass
+        produced, this works on any source -- including a shader pasted in
+        already golfed, that this session never golfed itself.
+
+        Same "never hand back code that doesn't compile" guarantee as golf
+        (`_do_golf`) -- not applicable to Common, which has no `mainImage`
+        of its own to compile standalone.
+        """
+        if not source:
+            return
+        beautified = engine_bridge.beautify_shader(source)
+        if self._current_tab != COMMON_TAB:
+            self._engine.set_common(self._common_source)
+            try:
+                self._engine.compile_pass(self._current_tab, beautified)
+            except RuntimeError as exc:
+                QMessageBox.warning(
+                    self,
+                    tr("dialogs.degolf_cancelled.title"),
+                    tr("dialogs.degolf_cancelled.body", error=exc),
+                )
+                try:
+                    self._engine.compile_pass(self._current_tab, source)  # restore
+                except RuntimeError:
+                    pass
+                return
+            self.editor.clear_error_marker()
+            self.footer.set_compile_ok()
+
+        self.editor.replace_value(beautified)
+
     def _on_golf_all(self) -> None:
         options = self._prompt_golf_options()
         if options is None:
@@ -777,6 +941,13 @@ class MainWindow(QMainWindow):
         golfed_sources: dict[int, str] = {}
         total_before = len(original_common.encode("utf-8"))
         total_after = len(golfed_common.encode("utf-8"))
+        # RM10.md section 7: "Golfer tout le projet" must summarize each
+        # pass's own before/after, not just a single project-wide total —
+        # collected alongside the totals below rather than recomputed
+        # afterwards from `golfed_sources` (which loses the Common row).
+        breakdown_rows: list[tuple[str, int, int]] = []
+        if original_common:
+            breakdown_rows.append((tr("tabs.common"), total_before, total_after))
 
         def _rollback() -> None:
             self._engine.set_common(original_common)
@@ -802,8 +973,10 @@ class MainWindow(QMainWindow):
                 _rollback()
                 return
             golfed_sources[pass_idx] = golfed
-            total_before += len(src.encode("utf-8"))
-            total_after += len(golfed.encode("utf-8"))
+            pass_before, pass_after = len(src.encode("utf-8")), len(golfed.encode("utf-8"))
+            breakdown_rows.append((engine_bridge.PASS_LABELS[pass_idx], pass_before, pass_after))
+            total_before += pass_before
+            total_after += pass_after
 
         self._common_source = golfed_common
         self._pass_sources.update(golfed_sources)
@@ -814,31 +987,232 @@ class MainWindow(QMainWindow):
         self.editor.clear_error_marker()
         self.footer.set_compile_ok()
         pct = 100.0 * (total_before - total_after) / total_before if total_before else 0.0
+
+        def _row_pct(before: int, after: int) -> float:
+            return 100.0 * (before - after) / before if before else 0.0
+
+        breakdown = "\n".join(
+            tr(
+                "dialogs.golf_all_result.per_pass_line",
+                label=label, before=before, after=after, percent=f"{_row_pct(before, after):.0f}",
+            )
+            for label, before, after in breakdown_rows
+        )
         QMessageBox.information(
             self,
             tr("dialogs.golf_all_result.title"),
             tr(
                 "dialogs.golf_all_result.body",
                 pass_count=len(golfed_sources), before=total_before, after=total_after,
-                percent=f"{pct:.0f}",
+                percent=f"{pct:.0f}", breakdown=breakdown,
             ),
         )
 
     # ---- unsaved-changes guard + recent files ------------------------------
 
+    @property
+    def _is_dirty(self) -> bool:
+        return self.__is_dirty
+
+    @_is_dirty.setter
+    def _is_dirty(self, value: bool) -> None:
+        self.__is_dirty = value
+        self._update_window_title()
+
+    def _update_window_title(self) -> None:
+        """RM10.md section 1, item 5: the title always shows, without
+        opening any menu, whether the current project has unsaved changes
+        -- Qt's own `[*]` convention (`setWindowModified`) drives the
+        asterisk, so the literal substring `[*]` must appear in the
+        translated title string in every language (see `lngs/*.json`,
+        `app.window_title`/`window_title_file`) for the marker to render at
+        all; its exact placement is free to vary per language.
+        """
+        if self._current_project_path:
+            self.setWindowTitle(tr(
+                "app.window_title_file",
+                filename=Path(self._current_project_path).name,
+                version=APP_VERSION,
+            ))
+        else:
+            self.setWindowTitle(tr("app.window_title", version=APP_VERSION))
+        self.setWindowModified(self.__is_dirty)
+
     def _confirm_discard_if_dirty(self) -> bool:
-        """Returns True if it's OK to proceed (no unsaved changes, or the
-        user confirmed discarding them)."""
+        """Returns True if it's OK to proceed: no unsaved changes, the
+        changes were just saved (via the "Save" choice below), or the user
+        explicitly confirmed discarding them. RM10.md section 1, item 4:
+        three distinct choices (Save / Don't save / Cancel) rather than the
+        previous Yes/Cancel, which only ever offered to discard.
+        """
         if not self._is_dirty:
             return True
-        answer = QMessageBox.question(
-            self,
-            tr("dialogs.unsaved_changes.title"),
-            tr("dialogs.unsaved_changes.body"),
-            QMessageBox.Yes | QMessageBox.Cancel,
-            QMessageBox.Cancel,
-        )
-        return answer == QMessageBox.Yes
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(tr("dialogs.unsaved_changes.title"))
+        box.setText(tr("dialogs.unsaved_changes.body"))
+        save_btn = box.addButton(tr("dialogs.unsaved_changes.save_button"), QMessageBox.AcceptRole)
+        discard_btn = box.addButton(tr("dialogs.unsaved_changes.discard_button"), QMessageBox.DestructiveRole)
+        cancel_btn = box.addButton(tr("dialogs.unsaved_changes.cancel_button"), QMessageBox.RejectRole)
+        box.setDefaultButton(save_btn)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is discard_btn:
+            return True
+        if clicked is save_btn:
+            return self._quick_save_current_project()
+        return False  # cancel_btn, or the dialog was dismissed some other way
+
+    def _build_project_dict(self) -> dict:
+        """The project-file payload (same `.json` shape `_on_save_project`
+        writes), built synchronously from `_pass_sources`/`_common_source`
+        -- already mirrored live from the editor by `_on_text_changed` on
+        every keystroke, so no async `editor.get_value()` round-trip is
+        needed here. Shared by `_quick_save_current_project` (unsaved-changes
+        "Save" choice) and `_write_autosave` (background autosave).
+        """
+        if self._slider_panel_tab is not None:
+            self._slider_layouts[str(self._slider_panel_tab)] = self.sliders_panel.export_layout()
+        return {
+            "format": PROJECT_FORMAT_VERSION,
+            "common": self._common_source,
+            "passes": {str(k): v for k, v in self._pass_sources.items()},
+            "ichannels": self.ichannel_panel.project_data(),
+            "sliders": self._slider_layouts,
+        }
+
+    def _quick_save_current_project(self) -> bool:
+        """Synchronous save backing the "Save" choice of the unsaved-changes
+        guard: reuses `_current_project_path` if it's an actual `.json`
+        project (never a bare `.frag`/`.glsl` opened via `_open_path` --
+        overwriting that with project JSON would silently corrupt it),
+        otherwise falls back to the same Save Project As dialog as the
+        explicit menu action. Returns False (never saved) if the user
+        cancels the file dialog or the write fails.
+        """
+        path = self._current_project_path
+        if not path or not path.lower().endswith(".json"):
+            path, _ = QFileDialog.getSaveFileName(
+                self, tr("dialogs.save_project.title"),
+                str(workspace_dirs.dir_for("projects") / "project.json"),
+                tr("dialogs.save_project.filter"),
+            )
+            if not path:
+                return False
+        project = self._build_project_dict()
+        try:
+            Path(path).write_text(json.dumps(project, indent=2), encoding="utf-8")
+        except OSError as exc:
+            QMessageBox.warning(self, tr("dialogs.save_project.title"), str(exc))
+            return False
+        self._current_project_path = path
+        self._is_dirty = False
+        self._add_recent_file(path)
+        return True
+
+    # ---- autosave + crash recovery (RM10.md section 1, items 2/3) ---------
+
+    def _autosave_file_path(self) -> Path:
+        base = Path(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation))
+        base.mkdir(parents=True, exist_ok=True)
+        return base / "autosave.json"
+
+    def _write_autosave(self) -> None:
+        """Timer-driven (`_autosave_timer`, see `_apply_autosave_settings`).
+        Purely synchronous and reuses already-live in-memory state
+        (`_build_project_dict`) -- no editor round-trip, no blocking network
+        or dialog -- so it never interrupts typing or the live preview, per
+        RM10.md's requirement. A skipped/failed write is never surfaced to
+        the user: this is a best-effort safety net, not an explicit save.
+        """
+        if not self._is_dirty:
+            return
+        project = self._build_project_dict()
+        project["__autosave_source_path"] = self._current_project_path
+        project["__autosave_timestamp"] = time.time()
+        try:
+            self._autosave_file_path().write_text(json.dumps(project), encoding="utf-8")
+        except OSError:
+            pass
+
+    def _clear_autosave(self) -> None:
+        """Called after any *clean* shutdown (closeEvent) or once a
+        recovered/discarded autosave has been dealt with at startup -- an
+        autosave file surviving into the next launch is exactly what means
+        "the previous run ended abnormally" (RM10.md section 1, item 3), so
+        it must never linger past a normal close."""
+        try:
+            self._autosave_file_path().unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _apply_autosave_settings(self) -> None:
+        enabled = self._settings.value("autosaveEnabled", True, type=bool)
+        interval_min = self._settings.value("autosaveIntervalMin", 2, type=int)
+        self._autosave_timer.stop()
+        if enabled:
+            self._autosave_timer.start(max(1, interval_min) * 60_000)
+
+    def _try_crash_recovery(self) -> bool:
+        """Called once at startup, before the default shader is loaded.
+        Returns True if a recovered project was actually loaded (in which
+        case the caller must skip loading the default shader) -- see
+        `__init__`. A present `autosave.json` means the previous run never
+        reached `closeEvent`'s clean-shutdown `_clear_autosave()` call, i.e.
+        an abnormal exit (crash, forced close, power loss).
+        """
+        autosave_path = self._autosave_file_path()
+        if not autosave_path.exists():
+            return False
+        try:
+            data = json.loads(autosave_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            self._clear_autosave()
+            return False
+
+        timestamp = data.get("__autosave_timestamp")
+        when = datetime.fromtimestamp(timestamp).strftime("%d/%m/%Y %H:%M") if timestamp else "?"
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Question)
+        box.setWindowTitle(tr("dialogs.crash_recovery.title"))
+        box.setText(tr("dialogs.crash_recovery.body", timestamp=when))
+        restore_btn = box.addButton(tr("dialogs.crash_recovery.restore_button"), QMessageBox.AcceptRole)
+        discard_btn = box.addButton(tr("dialogs.crash_recovery.discard_button"), QMessageBox.DestructiveRole)
+        box.setDefaultButton(restore_btn)
+        box.exec()
+        if box.clickedButton() is not restore_btn:
+            self._clear_autosave()
+            return False
+
+        try:
+            self._apply_project_dict(data)
+        except Exception as exc:  # noqa: BLE001 - a malformed autosave must never block startup
+            QMessageBox.warning(
+                self, tr("dialogs.crash_recovery.title"),
+                tr("dialogs.open_error.body", path=str(autosave_path), error=exc),
+            )
+            self._clear_autosave()
+            return False
+
+        self._current_project_path = data.get("__autosave_source_path")
+        self._is_dirty = True
+        self._clear_autosave()
+        return True
+
+    def _show_export_success(self, title: str, body: str, file_path: str) -> None:
+        """RM10.md section 8/9: every save/export confirmation names the
+        exact file produced *and* offers a button to jump straight to its
+        containing folder — pairs naturally with `workspace_dirs`, which
+        already gives each save/export dialog its own organized starting
+        folder. A plain `QMessageBox` so the extra button reads as a
+        secondary action next to the default Ok, not a second, equally
+        weighted choice.
+        """
+        box = QMessageBox(QMessageBox.Information, title, body, QMessageBox.Ok, self)
+        open_folder_button = box.addButton(tr("dialogs.common.open_folder_button"), QMessageBox.ActionRole)
+        box.exec()
+        if box.clickedButton() is open_folder_button:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(file_path).resolve().parent)))
 
     def _add_recent_file(self, path: str) -> None:
         self._recent_files = [path] + [p for p in self._recent_files if p != path]
@@ -878,6 +1252,7 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError) as exc:
             QMessageBox.warning(self, tr("dialogs.open_error.title"), tr("dialogs.open_error.body", path=path, error=exc))
             return
+        self._current_project_path = path
         self._is_dirty = False
         self._add_recent_file(path)
 
@@ -890,6 +1265,7 @@ class MainWindow(QMainWindow):
         text = self._common_source if tab_id == COMMON_TAB else self._pass_sources[tab_id]
         self.editor.set_value(text)
         self.editor.clear_error_marker()
+        self._update_editor_language(tab_id, text)
         if tab_id == COMMON_TAB:
             self.ichannel_panel.setEnabled(False)
         else:
@@ -899,6 +1275,25 @@ class MainWindow(QMainWindow):
 
     def _load_project(self, path: str) -> None:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
+        # RM10.md section 9: a project written by a newer version of this
+        # software (a `"format"` this build doesn't recognize) must say so
+        # up front -- `_apply_project_dict` below reads each field with
+        # `.get(...)` and sensible defaults, so it will not crash on an
+        # unrecognized future shape, but it also can't know what a higher
+        # format number might have changed, so any fields it doesn't
+        # understand are silently ignored rather than migrated. Loading
+        # still proceeds best-effort after the warning (refusing outright
+        # would be worse for a minor, mostly-compatible bump) — this is a
+        # heads-up, not a hard block.
+        file_format = data.get("format")
+        if isinstance(file_format, int) and file_format > PROJECT_FORMAT_VERSION:
+            QMessageBox.warning(
+                self, tr("dialogs.open_project.title"),
+                tr(
+                    "dialogs.open_project.future_format_warning",
+                    file_format=file_format, current_format=PROJECT_FORMAT_VERSION,
+                ),
+            )
         self._apply_project_dict(data)
 
     def _apply_project_dict(self, data: dict) -> None:
@@ -924,7 +1319,11 @@ class MainWindow(QMainWindow):
         for pass_idx in engine_bridge.ALL_PASSES:
             self._pass_sources[pass_idx] = sources.get(str(pass_idx), "")
         self.ichannel_panel.load_project_data(data.get("ichannels", {}))
-        for pass_idx, channel_idx, kind, value in self.ichannel_panel.all_assignments():
+        for pass_idx, channel_idx, kind, value, _volume, _muted in self.ichannel_panel.all_assignments():
+            # `_apply_ichannel_assignment` -> `_start_audio_channel` reads
+            # the already-loaded volume/mute back out of `ichannel_panel`
+            # itself (`audio_settings_for`), so nothing further is needed
+            # here for the "audio" case specifically.
             self._apply_ichannel_assignment(pass_idx, channel_idx, kind, value)
         raw_sliders = data.get("sliders", {})
         self._slider_layouts = {
@@ -947,11 +1346,13 @@ class MainWindow(QMainWindow):
         self._slider_layouts = {}
         self._slider_panel_tab = None
         self._goto_tab(engine_bridge.PASS_IMAGE)
+        self._current_project_path = None
         self._is_dirty = False
 
     def _on_open(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, tr("dialogs.open_shader.title"), "", tr("dialogs.open_shader.filter")
+            self, tr("dialogs.open_shader.title"),
+            str(workspace_dirs.dir_for("shaders")), tr("dialogs.open_shader.filter"),
         )
         if not path:
             return
@@ -959,7 +1360,8 @@ class MainWindow(QMainWindow):
 
     def _on_open_project(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, tr("dialogs.open_project.title"), "", tr("dialogs.open_project.filter")
+            self, tr("dialogs.open_project.title"),
+            str(workspace_dirs.dir_for("projects")), tr("dialogs.open_project.filter"),
         )
         if not path:
             return
@@ -1008,6 +1410,7 @@ class MainWindow(QMainWindow):
         # disk), an import has nowhere on disk it corresponds to yet —
         # treat it like unsaved work so closing/opening something else
         # prompts to save it first, same as any manual edit would.
+        self._current_project_path = None
         self._is_dirty = True
         if warnings:
             QMessageBox.information(
@@ -1017,13 +1420,16 @@ class MainWindow(QMainWindow):
 
     def _on_save_as(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
-            self, tr("dialogs.save_as.title"), "shader.frag", tr("dialogs.save_as.filter")
+            self, tr("dialogs.save_as.title"),
+            str(workspace_dirs.dir_for("shaders") / "shader.frag"),
+            tr("dialogs.save_as.filter"),
         )
         if not path:
             return
 
         def _save(text: str) -> None:
             Path(path).write_text(text, encoding="utf-8")
+            self._current_project_path = path
             self._is_dirty = False
             self._add_recent_file(path)
 
@@ -1031,7 +1437,9 @@ class MainWindow(QMainWindow):
 
     def _on_save_project(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
-            self, tr("dialogs.save_project.title"), "project.json", tr("dialogs.save_project.filter")
+            self, tr("dialogs.save_project.title"),
+            str(workspace_dirs.dir_for("projects") / "project.json"),
+            tr("dialogs.save_project.filter"),
         )
         if not path:
             return
@@ -1041,38 +1449,38 @@ class MainWindow(QMainWindow):
                 self._common_source = text
             else:
                 self._pass_sources[self._current_tab] = text
-            # The panel's live widgets (right-click min/max/decimals edits
-            # since the last rebuild) haven't necessarily been snapshotted
-            # into `_slider_layouts` yet — only structural rebuilds trigger
-            # that (see `_refresh_sliders_for`) — so capture the current
-            # tab's state explicitly before serializing.
-            if self._slider_panel_tab is not None:
-                self._slider_layouts[str(self._slider_panel_tab)] = self.sliders_panel.export_layout()
-            project = {
-                "format": 3,
-                "common": self._common_source,
-                "passes": {str(k): v for k, v in self._pass_sources.items()},
-                "ichannels": self.ichannel_panel.project_data(),
-                "sliders": self._slider_layouts,
-            }
+            # `_build_project_dict` re-snapshots `_slider_layouts` itself;
+            # the explicit `text` round-trip above is what this menu action
+            # adds over `_quick_save_current_project` -- belt-and-braces
+            # freshness in case the very last keystroke hasn't reached
+            # `_pass_sources`/`_common_source` via `_on_text_changed` yet.
+            project = self._build_project_dict()
             Path(path).write_text(json.dumps(project, indent=2), encoding="utf-8")
+            self._current_project_path = path
             self._is_dirty = False
             self._add_recent_file(path)
+            self._show_export_success(
+                tr("dialogs.save_project.title"), tr("dialogs.save_project.export_success", path=path), path,
+            )
 
         self.editor.get_value(_save)
 
     def closeEvent(self, event) -> None:
         if self._confirm_discard_if_dirty():
+            self._autosave_timer.stop()
             self._stop_all_video_sources()
             self._stop_all_audio_sources()
             self._save_layout()
+            self._clear_autosave()
             event.accept()
         else:
             event.ignore()
 
     def _on_export_golfed(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
-            self, tr("dialogs.export_golfed.title"), "shader.min.frag", tr("dialogs.export_golfed.filter")
+            self, tr("dialogs.export_golfed.title"),
+            str(workspace_dirs.dir_for("exports") / "shader.min.frag"),
+            tr("dialogs.export_golfed.filter"),
         )
         if not path:
             return
@@ -1106,15 +1514,100 @@ class MainWindow(QMainWindow):
                 )
                 return
             Path(path).write_text(exported, encoding="utf-8")
+            self._show_export_success(
+                tr("dialogs.export_golfed.title"), tr("dialogs.export_golfed.export_success", path=path), path,
+            )
 
         self.editor.get_value(_export)
 
+    def _on_export_compiled_shader(self, target: str) -> None:
+        """`target` is `"hlsl"` or `"msl"`. One-off export of the pass
+        currently shown in the editor, translated via `naga`'s HLSL/MSL
+        backends (`Engine.export_shader_as`, see RMLG.md section 2) --
+        never a new editable tab or a `ShaderDialect`: HLSL/MSL have no
+        `naga` frontend, so nothing this produces can be pasted back into
+        this editor to keep editing it here. That limitation is shown to
+        the user up front, not just documented in this file.
+        """
+        if self._current_tab == COMMON_TAB:
+            QMessageBox.information(
+                self,
+                tr("dialogs.export_shader.title"),
+                tr("dialogs.export_shader.common_tab_body"),
+            )
+            return
+
+        not_reeditable_key = (
+            "dialogs.export_shader.not_reeditable_hlsl"
+            if target == "hlsl"
+            else "dialogs.export_shader.not_reeditable_msl"
+        )
+        bindings_caveat_key = (
+            "dialogs.export_shader.bindings_caveat_hlsl"
+            if target == "hlsl"
+            else "dialogs.export_shader.bindings_caveat_msl"
+        )
+        # Three distinct caveats, always shown together: the round-trip
+        # warning (this file can't be pasted back into the editor), the
+        # binding-convention warning (translated iChannel/uniform bindings
+        # use naga's generic register/index conventions, not necessarily
+        # those of the target engine), and the pixel-fidelity warning
+        # (naga's translation targets functional correctness, never a
+        # contractually guaranteed bit-exact match against this software's
+        # own live rendering -- RMLG.md section 2.3, "à vérifier au cas par
+        # cas plutôt que supposé"). None of the three implies another, so
+        # none is dropped even when the others already apply.
+        QMessageBox.information(
+            self,
+            tr("dialogs.export_shader.title"),
+            f"{tr(not_reeditable_key)}\n\n{tr(bindings_caveat_key)}\n\n"
+            f"{tr('dialogs.export_shader.pixel_fidelity_caveat')}",
+        )
+
+        if target == "hlsl":
+            default_name, filt = "shader.hlsl", tr("dialogs.export_shader.filter_hlsl")
+        else:
+            default_name, filt = "shader.metal", tr("dialogs.export_shader.filter_msl")
+        path, _ = QFileDialog.getSaveFileName(
+            self, tr("dialogs.export_shader.title"),
+            str(workspace_dirs.dir_for("exports") / default_name), filt,
+        )
+        if not path:
+            return
+
+        # `Engine.export_shader_as` reuses the last successfully compiled
+        # source/dialect for this pass (see `renderer::Engine::export_shader_as`)
+        # -- no need to fetch the editor's live text first, and no risk of
+        # exporting a stale/partial pass since that field is only populated
+        # after `compile_pass` actually succeeds.
+        try:
+            exported = self._engine.export_shader_as(self._current_tab, target)
+        except RuntimeError as exc:
+            QMessageBox.warning(
+                self,
+                tr("dialogs.export_shader.failed_title"),
+                tr("dialogs.export_shader.failed_body", error=exc),
+            )
+            return
+
+        Path(path).write_text(exported, encoding="utf-8")
+        self._show_export_success(
+            tr("dialogs.export_shader.title"), tr("dialogs.export_shader.export_success", path=path), path,
+        )
+
     def _on_export_png(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, tr("dialogs.export_png.title"), "shader.png", "PNG (*.png)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, tr("dialogs.export_png.title"),
+            str(workspace_dirs.dir_for("images") / "shader.png"), "PNG (*.png)",
+        )
         if not path:
             return
         if not self.viewport.export_png(path):
             QMessageBox.warning(self, tr("dialogs.export_png.title"), tr("dialogs.export_png.nothing_to_export"))
+            return
+        self._show_export_success(
+            tr("dialogs.export_png.title"), tr("dialogs.export_png.export_success", path=path), path,
+        )
 
     def _on_export_video(self) -> None:
         """Collects export settings (`ExportVideoDialog`), then runs the
@@ -1129,7 +1622,7 @@ class MainWindow(QMainWindow):
         """
         path, _ = QFileDialog.getSaveFileName(
             self, tr("dialogs.export_video.save_dialog_title"),
-            tr("dialogs.export_video.save_dialog_default_name"),
+            str(workspace_dirs.dir_for("videos") / tr("dialogs.export_video.save_dialog_default_name")),
             tr("dialogs.export_video.save_dialog_filter"),
         )
         if not path:
@@ -1142,6 +1635,24 @@ class MainWindow(QMainWindow):
         if dialog.exec() != QDialog.Accepted:
             return
         export = dialog.settings()
+
+        # RM10.md section 1, item 8: `export_video_dialog.py` lets the
+        # resolution spinboxes go up to 7680 (8K), but the real ceiling is
+        # whatever this machine's GPU/driver actually supports
+        # (`Engine.max_texture_dimension`, queried from the adapter at
+        # startup -- see `renderer::Engine::new`). Checked here, before
+        # `resize()` is ever called with it, rather than letting an
+        # oversized request reach `wgpu` and panic on a validation error.
+        max_dim = self._engine.max_texture_dimension()
+        if export.width > max_dim or export.height > max_dim:
+            QMessageBox.warning(
+                self, tr("dialogs.export_video.title"),
+                tr(
+                    "dialogs.export_video.resolution_too_large",
+                    width=export.width, height=export.height, max=max_dim,
+                ),
+            )
+            return
 
         try:
             ffmpeg_path = video_export.resolve_ffmpeg_path()
@@ -1162,7 +1673,19 @@ class MainWindow(QMainWindow):
         # or it would read pixels sized for the wrong resolution.
         self.viewport.suspend_for_external_render()
         try:
-            self._engine.resize(export.width, export.height)
+            # RM10.md section 1, item 8: `resize` can still fail here even
+            # though `export.width/height` already passed the
+            # `max_texture_dimension()` check above -- a resolution within
+            # that per-axis limit can still exceed available VRAM (verified
+            # empirically, see `renderer::Engine::resize`'s doc comment).
+            # `Engine.resize` raises a plain `RuntimeError` in that case
+            # rather than crashing, and leaves the engine at its previous,
+            # still-working resolution.
+            try:
+                self._engine.resize(export.width, export.height)
+            except RuntimeError as exc:
+                QMessageBox.warning(self, tr("dialogs.export_video.title"), tr("dialogs.export_video.resize_failed", error=exc))
+                return
             try:
                 progress = ExportProgressDialog(
                     self._engine,
@@ -1173,11 +1696,22 @@ class MainWindow(QMainWindow):
                     export.crf,
                     self.viewport.current_date(),
                     path,
-                    self,
+                    audio_path=export.audio_path,
+                    audio_volume_db=export.audio_volume_db,
+                    audio_start_offset=export.audio_start_offset,
+                    audio_loop=export.audio_loop,
+                    audio_bitrate_kbps=export.audio_bitrate_kbps,
+                    parent=self,
                 )
                 result = progress.run()
             finally:
-                self._engine.resize(current_width, current_height)
+                try:
+                    self._engine.resize(current_width, current_height)
+                except RuntimeError as exc:
+                    QMessageBox.warning(
+                        self, tr("dialogs.export_video.title"),
+                        tr("dialogs.export_video.restore_resolution_failed", error=exc),
+                    )
         finally:
             self.viewport.resume_after_external_render()
 
@@ -1196,13 +1730,14 @@ class MainWindow(QMainWindow):
         except OSError:
             pass  # calibration is a nice-to-have, never worth failing the export over
 
-        QMessageBox.information(
-            self, tr("dialogs.export_video.title"),
+        self._show_export_success(
+            tr("dialogs.export_video.title"),
             tr(
                 "dialogs.export_video.export_success",
                 frames=export.frames, width=export.width, height=export.height,
                 fps=f"{export.fps:g}", path=path,
             ),
+            path,
         )
 
     def _apply_editor_preferences(self) -> None:
@@ -1230,6 +1765,16 @@ class MainWindow(QMainWindow):
         shadertoy_key_box = QLineEdit(self._settings.value("shadertoyApiKey", "", type=str))
         shadertoy_key_box.setPlaceholderText(tr("dialogs.preferences.shadertoy_api_key_placeholder"))
 
+        # RM10.md section 1, item 2 -- disableable, adjustable interval.
+        autosave_box = QCheckBox()
+        autosave_box.setChecked(self._settings.value("autosaveEnabled", True, type=bool))
+        autosave_interval_box = QSpinBox()
+        autosave_interval_box.setRange(1, 30)
+        autosave_interval_box.setSuffix(" min")
+        autosave_interval_box.setValue(self._settings.value("autosaveIntervalMin", 2, type=int))
+        autosave_interval_box.setEnabled(autosave_box.isChecked())
+        autosave_box.toggled.connect(autosave_interval_box.setEnabled)
+
         # Populated from `lngs/*.json` on disk (i18n.available_languages()),
         # never a hardcoded list -- dropping in a new language file is
         # enough to make it appear here, no code change needed. Sorted by
@@ -1246,6 +1791,8 @@ class MainWindow(QMainWindow):
         form.addRow(tr("dialogs.preferences.minimap"), minimap_box)
         form.addRow(tr("dialogs.preferences.compile_debounce"), debounce_box)
         form.addRow(tr("dialogs.preferences.shadertoy_api_key"), shadertoy_key_box)
+        form.addRow(tr("dialogs.preferences.autosave_enabled"), autosave_box)
+        form.addRow(tr("dialogs.preferences.autosave_interval_minutes"), autosave_interval_box)
         form.addRow(tr("dialogs.preferences.language"), language_box)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -1261,6 +1808,9 @@ class MainWindow(QMainWindow):
         self._compile_debounce_ms = debounce_box.value()
         self._settings.setValue("compileDebounceMs", self._compile_debounce_ms)
         self._settings.setValue("shadertoyApiKey", shadertoy_key_box.text().strip())
+        self._settings.setValue("autosaveEnabled", autosave_box.isChecked())
+        self._settings.setValue("autosaveIntervalMin", autosave_interval_box.value())
+        self._apply_autosave_settings()
 
         new_language_code = language_box.currentData()
         if new_language_code and new_language_code != current_language_code:
@@ -1297,6 +1847,25 @@ class MainWindow(QMainWindow):
     def _on_render_error(self, message: str) -> None:
         self.footer.set_compile_error(message)
 
+    def _on_viewport_resize_error(self, message: str) -> None:
+        """RM10.md section 1, item 8: a live window/splitter resize the
+        GPU couldn't keep up with (typically insufficient VRAM at the new
+        size) -- a transient status-bar message rather than a blocking
+        dialog, since nothing the user explicitly asked for failed
+        outright: the preview keeps rendering at its previous, still-valid
+        resolution, just not yet at the size the window happens to be now."""
+        self.footer.showMessage(tr("dialogs.viewport_resize_error", error=message), 8000)
+
+    def _on_render_scale_changed(self, scale: float) -> None:
+        """RM10.md section 4: the footer's render-scale combo box lets the
+        preview be rendered below the viewport's own on-screen size (e.g.
+        50%) to stay fluid on a heavy shader, independently of the window/
+        splitter size. Persisted across sessions -- see the restore next to
+        where `self.footer`/`self.viewport` are wired up in
+        `_build_central_widget`."""
+        self.viewport.set_render_scale(scale)
+        self._settings.setValue("renderScale", scale)
+
     def _apply_ichannel_assignment(self, pass_idx: int, channel_idx: int, kind: str, value) -> None:
         # Any video/webcam/audio source previously bound to this exact slot
         # is no longer wanted the instant its assignment changes to
@@ -1321,7 +1890,8 @@ class MainWindow(QMainWindow):
             elif kind == "cubemap":
                 self._engine.set_ichannel_cubemap(pass_idx, channel_idx, value)
             elif kind == "procedural":
-                self._engine.set_ichannel_procedural(pass_idx, channel_idx, value)
+                scale, seed = self.ichannel_panel.procedural_settings_for(pass_idx, channel_idx)
+                self._engine.set_ichannel_procedural(pass_idx, channel_idx, value, scale, seed)
             elif kind == "buffer":
                 self._engine.set_ichannel_buffer(pass_idx, channel_idx, value)
             elif kind == "keyboard":
@@ -1344,6 +1914,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, tr("dialogs.ichannel_error.title"), str(exc))
             return
         source = VideoChannelSource(self._video_frame_callback(pass_idx, channel_idx), self)
+        source.sourceLost.connect(lambda msg, p=pass_idx, c=channel_idx: self._on_source_lost(p, c, msg))
         self._video_sources[(pass_idx, channel_idx)] = source
         try:
             source.start_file(path)
@@ -1360,6 +1931,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, tr("dialogs.ichannel_error.title"), str(exc))
             return
         source = VideoChannelSource(self._video_frame_callback(pass_idx, channel_idx), self)
+        source.sourceLost.connect(lambda msg, p=pass_idx, c=channel_idx: self._on_source_lost(p, c, msg))
         self._video_sources[(pass_idx, channel_idx)] = source
         try:
             source.start_webcam(device_id or "")
@@ -1385,7 +1957,29 @@ class MainWindow(QMainWindow):
                 # malformed frame), not worth interrupting playback with a
                 # dialog for every single tick.
                 pass
+            self._maybe_refresh_live_thumbnail(pass_idx, channel_idx, width, height, rgba)
         return _on_frame
+
+    def _maybe_refresh_live_thumbnail(
+        self, pass_idx: int, channel_idx: int, width: int, height: int, rgba: bytes
+    ) -> None:
+        """RM10.md section 5: refreshes a video/webcam slot's thumbnail
+        with an actual decoded frame (throttled, see
+        `_THUMBNAIL_MIN_INTERVAL_S`/`_thumb_last_update`) instead of the
+        fixed 🎬/📷 icon it showed before this existed. `IChannelPanel`
+        itself already discards the update if the slot has since been
+        reassigned away from video/webcam, or isn't the currently
+        displayed pass — this only decides *when* to bother building the
+        `QPixmap` in the first place."""
+        if width <= 0 or height <= 0:
+            return
+        now = time.monotonic()
+        key = (pass_idx, channel_idx)
+        if now - self._thumb_last_update.get(key, 0.0) < _THUMBNAIL_MIN_INTERVAL_S:
+            return
+        self._thumb_last_update[key] = now
+        image = QImage(rgba, width, height, width * 4, QImage.Format_RGBA8888)
+        self.ichannel_panel.update_live_thumbnail(pass_idx, channel_idx, QPixmap.fromImage(image))
 
     def _stop_video_channel(self, pass_idx: int, channel_idx: int) -> None:
         source = self._video_sources.pop((pass_idx, channel_idx), None)
@@ -1412,11 +2006,33 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, tr("dialogs.ichannel_error.title"), str(exc))
             return
         source = AudioChannelSource(self)
+        source.sourceLost.connect(lambda msg, p=pass_idx, c=channel_idx: self._on_source_lost(p, c, msg))
+        # Applied before `start()` (which itself re-applies these to every
+        # freshly created `QAudioOutput`, see `AudioChannelSource.start`)
+        # so swapping which file this slot points to never silently resets
+        # an already-adjusted volume/mute back to 100%/unmuted.
+        volume, muted = self.ichannel_panel.audio_settings_for(pass_idx, channel_idx)
+        source.set_volume(volume)
+        source.set_muted(muted)
         self._audio_sources[(pass_idx, channel_idx)] = source
         try:
             source.start(path)
         except Exception as exc:  # noqa: BLE001 - Qt's own playback errors vary in type
             QMessageBox.warning(self, tr("dialogs.audio_error.title"), tr("dialogs.audio_error.body", path=path, error=exc))
+
+    def _on_source_lost(self, pass_idx: int, channel_idx: int, message: str) -> None:
+        """RM10.md section 1, item 6: a webcam/video/audio source that was
+        already streaming failed or disconnected mid-use (device unplugged,
+        drive holding the file disconnected, driver error). Stopped
+        cleanly -- releasing the device/file handle exactly like an
+        explicit reassignment would -- and surfaced as a non-blocking
+        message in the textures panel, never a crash, a silent stall, or an
+        interrupting dialog for something the user didn't just trigger."""
+        if (pass_idx, channel_idx) in self._video_sources:
+            self._stop_video_channel(pass_idx, channel_idx)
+        elif (pass_idx, channel_idx) in self._audio_sources:
+            self._stop_audio_channel(pass_idx, channel_idx)
+        self.ichannel_panel.show_slot_disconnected(pass_idx, channel_idx, message)
 
     def _on_audio_tick(self, _time_s: float) -> None:
         """Connected to `viewport.timeUpdated` (~60fps, same cadence every
@@ -1436,6 +2052,36 @@ class MainWindow(QMainWindow):
                 # already no-ops a frame for a slot reassigned away from
                 # Audio, not worth a dialog interrupting every tick.
                 pass
+            self._maybe_refresh_audio_thumbnail(pass_idx, channel_idx, waveform)
+
+    def _maybe_refresh_audio_thumbnail(self, pass_idx: int, channel_idx: int, waveform: bytes) -> None:
+        """RM10.md section 5: same idea as `_maybe_refresh_live_thumbnail`
+        for video/webcam, but for audio -- a small live waveform sparkline
+        instead of the fixed 🎵 icon, drawn from the same 512-byte waveform
+        row already computed every tick for the engine's own iChannel
+        audio texture (see `AudioChannelSource.compute_frame`), not a
+        second, separate analysis."""
+        now = time.monotonic()
+        key = (pass_idx, channel_idx)
+        if now - self._thumb_last_update.get(key, 0.0) < _THUMBNAIL_MIN_INTERVAL_S:
+            return
+        self._thumb_last_update[key] = now
+        pixmap = QPixmap(THUMB_SIZE, THUMB_SIZE)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setPen(QPen(Qt.green, 1))
+        n = len(waveform)
+        if n >= 2:
+            step = THUMB_SIZE / (n - 1)
+            prev_x, prev_y = 0.0, THUMB_SIZE / 2.0
+            for i, byte in enumerate(waveform):
+                x = i * step
+                y = THUMB_SIZE - (byte / 255.0) * THUMB_SIZE
+                if i > 0:
+                    painter.drawLine(int(prev_x), int(prev_y), int(x), int(y))
+                prev_x, prev_y = x, y
+        painter.end()
+        self.ichannel_panel.update_live_thumbnail(pass_idx, channel_idx, pixmap)
 
     def _stop_audio_channel(self, pass_idx: int, channel_idx: int) -> None:
         source = self._audio_sources.pop((pass_idx, channel_idx), None)
@@ -1453,3 +2099,34 @@ class MainWindow(QMainWindow):
 
     def _on_ichannel_assignment_changed(self, pass_idx: int, channel_idx: int, kind: str, value) -> None:
         self._apply_ichannel_assignment(pass_idx, channel_idx, kind, value)
+
+    def _on_ichannel_audio_settings_changed(
+        self, pass_idx: int, channel_idx: int, volume: float, muted: bool
+    ) -> None:
+        """RM10.md section 5: volume/mute for an audio iChannel slot,
+        adjusted live from the textures panel, independent of the system
+        output volume. A no-op if this slot has no active
+        `AudioChannelSource` right now (e.g. the slider was touched right
+        before a file was actually picked) -- the value is still recorded
+        in `IChannelPanel` and applied the moment a source does start, see
+        `_start_audio_channel`."""
+        source = self._audio_sources.get((pass_idx, channel_idx))
+        if source is not None:
+            source.set_volume(volume)
+            source.set_muted(muted)
+
+    def _on_ichannel_procedural_settings_changed(
+        self, pass_idx: int, channel_idx: int, scale: int, seed: int
+    ) -> None:
+        """RM10.md section 5: pattern size / seed for a procedural texture
+        (checker/white noise/value noise), adjusted live from the textures
+        panel. Unlike audio volume there's no persistent "source" object to
+        update in place -- a procedural texture is just regenerated and
+        re-uploaded outright, same call as a fresh assignment."""
+        kind, value = self.ichannel_panel.state_for(pass_idx, channel_idx)
+        if kind != "procedural":
+            return
+        try:
+            self._engine.set_ichannel_procedural(pass_idx, channel_idx, value, scale, seed)
+        except RuntimeError as exc:
+            QMessageBox.warning(self, tr("dialogs.ichannel_error.title"), str(exc))

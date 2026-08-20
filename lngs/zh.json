@@ -5,8 +5,9 @@
     "englishName": "Chinese (Simplified)"
   },
   "app": {
-    "window_title": "Petit Editeur GLSL v{version}",
-    "toolbar_name": "主工具栏"
+    "window_title": "Petit Editeur GLSL v{version} [*]",
+    "toolbar_name": "主工具栏",
+    "window_title_file": "{filename} [*] — Petit Editeur GLSL v{version}"
   },
   "tabs": {
     "image": "图像",
@@ -28,6 +29,9 @@
       "save_as": "另存为(&A)…",
       "save_project": "将项目另存为(&J)…",
       "export_golfed": "导出压缩代码(&E)…",
+      "export_compiled_menu": "将编译后的着色器导出为",
+      "export_hlsl": "HLSL (.hlsl)…",
+      "export_msl": "Metal (.metal)…",
       "export_png": "导出图像 (PNG)(&I)…",
       "export_video": "导出视频 (MP4)(&V)…",
       "preferences": "首选项(&P)…",
@@ -40,6 +44,7 @@
       "golf": "压缩代码(&G)",
       "golf_all": "压缩整个项目(&T)",
       "undo_golf": "撤销压缩(&U)",
+      "degolf": "格式化代码(&F)",
       "shortcuts": "键盘快捷键(&K)…"
     },
     "help": {
@@ -54,7 +59,9 @@
     "play_pause_tooltip": "播放/暂停时间 (iTime) — 也会驱动带关键帧的滑块动画",
     "reset_time": "重置时间",
     "reset_time_tooltip": "将 iTime 重置为 0 — 便于从头重新播放关键帧序列",
-    "golf": "压缩 🏌"
+    "golf": "压缩 🏌",
+    "degolf": "格式化 🧹",
+    "degolf_tooltip": "重新格式化代码（缩进、每行一条语句、间距），不重命名任何内容，也不改变其行为"
   },
   "actions": {
     "file.new": "文件：新建",
@@ -64,6 +71,8 @@
     "file.save_as": "文件：另存为…",
     "file.save_project": "文件：将项目另存为…",
     "file.export_golfed": "文件：导出压缩代码…",
+    "file.export_hlsl": "文件：导出为 HLSL…",
+    "file.export_msl": "文件：导出为 Metal (MSL)…",
     "file.export_png": "文件：导出图像 (PNG)…",
     "file.export_video": "文件：导出视频 (MP4)…",
     "file.preferences": "文件：首选项…",
@@ -76,9 +85,14 @@
     "toolbar.compile": "工具栏：编译",
     "toolbar.play_pause": "工具栏：播放/暂停",
     "toolbar.reset_time": "工具栏：重置时间",
-    "toolbar.golf": "工具栏：压缩"
+    "toolbar.golf": "工具栏：压缩",
+    "edit.degolf": "编辑：格式化代码",
+    "toolbar.degolf": "工具栏：格式化"
   },
   "dialogs": {
+    "common": {
+      "open_folder_button": "打开文件夹"
+    },
     "about": {
       "title": "关于",
       "body": "Le Petit Editeur GLSL — 版本 {version}\nCopyright © 2026 Patrick JAILLET — 保留所有权利\n电子邮件：sandefjord.development@proton.me\n网站：https://patrickjaillet.github.io/Le-Petit-Editeur-GLSL"
@@ -113,6 +127,10 @@
       "body": "压缩后的代码无法编译 — 编辑器内容未作更改。这很可能是压缩工具的一个错误，请反馈报告。\n\n编译错误：\n{error}",
       "body_all_or_nothing": "[{label}] 压缩后的代码无法编译（包括已压缩的公共部分）— 未作任何更改（全部或不做）。\n\n编译错误：\n{error}"
     },
+    "degolf_cancelled": {
+      "title": "格式化已取消",
+      "body": "重新格式化后的代码无法编译 — 编辑器未作任何更改。这很可能是格式化功能的错误，请报告。\n\n编译错误：\n{error}"
+    },
     "undo_golf": {
       "title": "撤销压缩",
       "body": "没有可撤销的压缩操作。"
@@ -123,11 +141,15 @@
     },
     "golf_all_result": {
       "title": "压缩整个项目",
-      "body": "{pass_count} 个通道 + 公共部分已压缩：{before} -> {after} 字节 (-{percent}%)。"
+      "body": "{pass_count} 个通道 + 公共部分已压缩：{before} -> {after} 字节 (-{percent}%)。\n\n{breakdown}",
+      "per_pass_line": "{label}：{before} -> {after} 字节 (-{percent}%)"
     },
     "unsaved_changes": {
       "title": "未保存的更改",
-      "body": "当前项目存在未保存的更改。是否继续并放弃这些更改？"
+      "body": "当前项目存在未保存的更改。是否继续并放弃这些更改？",
+      "save_button": "保存",
+      "discard_button": "不保存",
+      "cancel_button": "取消"
     },
     "open_shader": {
       "title": "打开着色器",
@@ -135,7 +157,8 @@
     },
     "open_project": {
       "title": "打开项目",
-      "filter": "项目 (*.json)"
+      "filter": "项目 (*.json)",
+      "future_format_warning": "此项目是使用更新版本的软件保存的（格式 {file_format}，此版本仅支持到格式 {current_format}）。部分设置可能无法正确加载——建议更新软件。"
     },
     "open_error": {
       "title": "打开",
@@ -160,15 +183,32 @@
     },
     "save_project": {
       "title": "保存项目",
-      "filter": "项目 (*.json)"
+      "filter": "项目 (*.json)",
+      "export_success": "项目已成功保存：\n{path}"
     },
     "export_golfed": {
       "title": "导出压缩代码",
-      "filter": "GLSL (*.frag *.glsl)"
+      "filter": "GLSL (*.frag *.glsl)",
+      "export_success": "压缩代码已成功导出：\n{path}"
+    },
+    "export_shader": {
+      "title": "导出编译后的着色器",
+      "not_reeditable_hlsl": "生成的 HLSL 文件是导出时所编译着色器的忠实翻译。本软件无法读取 HLSL：您无法将该 .hlsl 文件重新粘贴回编辑器中继续在此编辑 — 之后的任何修改都应始终从 GLSL/WGSL 源代码开始。",
+      "not_reeditable_msl": "生成的 Metal（MSL）文件是导出时所编译着色器的忠实翻译。本软件无法读取 MSL：您无法将该 .metal 文件重新粘贴回编辑器中继续在此编辑 — 之后的任何修改都应始终从 GLSL/WGSL 源代码开始。",
+      "bindings_caveat_hlsl": "如果该着色器使用了自定义的纹理或设置（iChannel、uniform），导出的文件会按照自动约定连接它们，这个约定可能与目标引擎所期望的不一致：该文件在按原样编译之前，可能需要手动做一些小调整。",
+      "bindings_caveat_msl": "如果该着色器使用了自定义的纹理或设置（iChannel、uniform），导出的文件会按照自动约定连接它们，这个约定可能与目标引擎所期望的不一致：该文件在按原样编译之前，可能需要手动做一些小调整。",
+      "pixel_fidelity_caveat": "无法保证在第三方引擎中重新编译此文件会产生与此处实时预览像素级完全一致的渲染结果——该转换的目标是功能正确性，而非合同保证的逐位精确匹配；请在目标引擎中逐个案例进行验证。",
+      "common_tab_body": "Common 标签页本身不是一个已编译的 pass —— 在导出到 HLSL/Metal 之前，请先选择一个 Buffer 或 Image 标签页。",
+      "filter_hlsl": "HLSL (*.hlsl)",
+      "filter_msl": "Metal (*.metal)",
+      "failed_title": "导出已取消",
+      "failed_body": "该着色器的翻译失败：\n\n{error}",
+      "export_success": "文件已成功导出：\n{path}"
     },
     "export_png": {
       "title": "导出图像",
-      "nothing_to_export": "目前没有可导出的内容。"
+      "nothing_to_export": "目前没有可导出的内容。",
+      "export_success": "图片已成功导出：\n{path}"
     },
     "export_video": {
       "title": "导出视频 (MP4)",
@@ -185,13 +225,25 @@
       "crf_preset_quality": "高质量",
       "crf_preset_balanced": "均衡",
       "crf_preset_smallest": "最小体积",
+      "audio_group": "音乐",
+      "audio_enable": "添加音轨",
+      "audio_browse": "浏览…",
+      "audio_placeholder": "未选择文件",
+      "audio_file_filter": "音频（{extensions}）",
+      "audio_volume": "音量",
+      "audio_start_offset": "起始位置",
+      "audio_bitrate": "音频质量",
+      "audio_loop": "如果音乐比视频短则循环播放",
       "estimated_size": "预计大小：~{size}",
       "save_dialog_title": "导出视频",
       "save_dialog_default_name": "shader.mp4",
       "save_dialog_filter": "视频 (*.mp4)",
       "ffmpeg_missing": "未找到 ffmpeg ({path})。\n\n请参阅 COMPILATION.md 中的“视频导出”一节：预期的可执行文件为 packaging/bin/ffmpeg.exe。",
       "export_failed": "导出失败：\n{error}",
-      "export_success": "视频导出成功（{frames} 帧，{width}×{height} @ {fps} fps）：\n{path}"
+      "export_success": "视频导出成功（{frames} 帧，{width}×{height} @ {fps} fps）：\n{path}",
+      "resolution_too_large": "分辨率 {width}×{height} 过高：此显卡每边最多支持 {max}px。请选择更小的分辨率。",
+      "resize_failed": "无法以此分辨率准备导出：{error}",
+      "restore_resolution_failed": "警告：导出后无法恢复之前的预览分辨率：{error}"
     },
     "export_progress": {
       "title": "导出视频 (MP4)",
@@ -209,7 +261,9 @@
       "shadertoy_api_key": "Shadertoy API 密钥",
       "shadertoy_api_key_placeholder": "（留空 = 下次导入时重新询问）",
       "language": "语言",
-      "language_restart_notice": "语言更改将在下次启动应用程序时生效。"
+      "language_restart_notice": "语言更改将在下次启动应用程序时生效。",
+      "autosave_enabled": "自动备份",
+      "autosave_interval_minutes": "备份间隔"
     },
     "shortcuts": {
       "title": "键盘快捷键",
@@ -227,7 +281,10 @@
       "face_row": "面 {face}",
       "choose_face_image": "选择该面的图像",
       "missing_faces_title": "立方体贴图",
-      "missing_faces_body": "必须填写全部 6 个面。"
+      "missing_faces_body": "必须填写全部 6 个面。",
+      "file_not_found_body": "找不到以下面的文件：{faces}。",
+      "face_not_square": "面 {face}：{width}x{height} —— 立方体贴图的每个面必须是正方形。",
+      "face_size_mismatch": "面 {face}：{size}x{size}，应为 {expected}x{expected}（与已选择的其他面一致）。"
     },
     "slider_bounds": {
       "title": "滑块范围",
@@ -235,6 +292,12 @@
       "max": "最大值",
       "decimals": "小数位数",
       "menu_edit": "编辑最小值/最大值…"
+    },
+    "keyframe_curve": {
+      "title": "插值曲线",
+      "linear": "线性",
+      "ease": "缓动 (ease)",
+      "step": "阶梯"
     },
     "color_picker": {
       "title": "选择颜色"
@@ -254,7 +317,23 @@
     },
     "ichannel_error": {
       "title": "iChannel"
-    }
+    },
+    "ichannel_drop_rejected": {
+      "title": "不支持的文件",
+      "body": "此文件（{extension}）不是 iChannel 支持的图像、视频或音频格式。",
+      "no_extension": "无扩展名"
+    },
+    "crash_recovery": {
+      "title": "是否恢复未保存的工作？",
+      "body": "软件未正常关闭。发现一份 {timestamp} 的自动备份，是否恢复？",
+      "restore_button": "恢复",
+      "discard_button": "放弃"
+    },
+    "gpu_error": {
+      "title": "不支持的显卡",
+      "body": "无法启动：在此计算机上未找到兼容的显卡。\n\n请尝试更新显卡驱动程序，然后重新启动本软件。\n\n技术详情：{error}"
+    },
+    "viewport_resize_error": "预览未调整大小（显存不足）：{error}"
   },
   "sliders_panel": {
     "filter_placeholder": "筛选…",
@@ -278,6 +357,7 @@
     ],
     "add_keyframe_menu": "添加关键帧 (t={time}秒)",
     "clear_keyframes_menu": "清除关键帧",
+    "edit_curve_menu": "插值曲线…",
     "add_keyframe_tooltip": "在当前时间添加关键帧 (t={time}秒)",
     "keyframe_button_tooltip": "点击：在 t={time}秒 处添加/更新 — 右键点击：更多选项",
     "reset_category": "↺ 重置该类别",
@@ -290,7 +370,7 @@
   "ichannel_panel": {
     "video_filter": "视频 (*.mp4 *.mov *.m4v *.avi *.mkv *.webm)",
     "audio_filter": "音频 (*.mp3 *.wav *.ogg *.flac)",
-    "image_filter": "图像 (*.png *.jpg *.jpeg *.bmp)",
+    "image_filter": "图像 (*.png *.jpg *.jpeg *.bmp *.gif *.webp)",
     "source_empty": "空",
     "source_image": "图像（文件）",
     "source_video": "视频（文件）…",
@@ -305,6 +385,12 @@
     "change_cubemap": "编辑各面…",
     "change_video": "更改视频…",
     "change_audio": "更改音频…",
+    "volume_tooltip": "音频输入音量（与系统音量无关）",
+    "mute_tooltip": "静音",
+    "procedural_scale_label": "图案大小",
+    "procedural_scale_tooltip": "图案大小（格数／噪点网格分辨率）",
+    "procedural_seed_label": "种子",
+    "procedural_seed_tooltip": "随机种子（0 = 该预设的默认值）",
     "change_webcam": "更改摄像头…",
     "choose_video": "为 iChannel{index} 选择视频",
     "choose_audio": "为 iChannel{index} 选择音频文件",
@@ -312,16 +398,32 @@
     "procedural_suffix": "{label}（程序化）",
     "thumb_empty": "空",
     "thumb_cube": "立方体",
-    "default_webcam_tooltip": "默认摄像头"
+    "default_webcam_tooltip": "默认摄像头",
+    "source_lost_tooltip": "来源丢失：{message}"
   },
   "footer": {
     "fps": "帧率：{fps}",
+    "resolution": "{width}×{height}（{percent}%）",
+    "resolution_tooltip": "预览实际使用的渲染分辨率，与窗口大小无关。",
+    "render_scale_tooltip": "预览渲染比例（降低以在较重的着色器上保持流畅）",
     "ready": "就绪",
     "compile_ok": "编译成功",
     "compile_error": "错误：{message}",
     "frame_time_tooltip": "每帧渲染耗时（红色条 = 慢于约 30 FPS）",
     "size_tooltip": "压缩前后的原始大小和估计的 gzip 大小（对实际传输/存储大小的近似估算）。标记 (< 2 KB / < 4 KB / < 8 KB) 对应传统 demoscene 4k/8k 比赛的门槛，基于压缩后的原始大小 — 并非与外部评分的在线比较。",
     "size_format": "{before} -> {after} 字节 (-{percent}%) | gzip {before_gz} -> {after_gz}{tier_suffix}",
-    "size_tier": "< {kb} KB"
+    "size_tier": "< {kb} KB",
+    "size_tier_approaching": "接近 {kb} KB",
+    "dialect_shadertoy": "Shadertoy",
+    "dialect_glsl": "GLSL",
+    "dialect_wgsl": "WGSL",
+    "dialect_tooltip": "{mode} 模式，通过 {signal} 检测",
+    "dialect_signal_mainimage": "存在 mainImage()",
+    "dialect_signal_voidmain": "存在 void main()",
+    "dialect_signal_version": "存在 #version",
+    "dialect_signal_fragcolor": "存在 gl_FragColor",
+    "dialect_signal_wgslentrypoint": "存在 WGSL @fragment fn 入口点",
+    "dialect_signal_wgsluniformorgeneric": "存在 var<uniform> 或 WGSL 泛型类型",
+    "dialect_signal_none": "未检测到信号，保留上一个模式"
   }
 }

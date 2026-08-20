@@ -42,10 +42,11 @@ import math
 import random
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QKeyEvent
+from PySide6.QtGui import QColor, QKeyEvent, QPainter, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -80,10 +81,27 @@ SHIFT_STEP_MULTIPLIER = 10
 KEYFRAME_MERGE_EPS = 0.05
 
 
-def _interpolate_keyframes(keyframes: list[tuple[float, float]], t: float) -> float:
-    """Piecewise-linear interpolation between `(time, value)` pairs already
-    sorted by time. Held constant outside the recorded range — a preview
-    should never guess past the last keyframe the user actually set."""
+# RM10.md section 3: the interpolation shape between two keyframes, not
+# just the raw (time, value) pairs themselves. "linear" is the historical
+# behaviour (unchanged default, and what every layout saved before this
+# existed implicitly used); "ease" eases in/out of each segment
+# (smoothstep, `3t²-2t³`) instead of moving at a constant rate; "step"
+# (paliers) holds the earlier keyframe's value for the whole segment and
+# jumps discretely to the next one, for parameters that should snap
+# rather than glide (palette swaps, discrete states, ...).
+KEYFRAME_CURVE_LINEAR = "linear"
+KEYFRAME_CURVE_EASE = "ease"
+KEYFRAME_CURVE_STEP = "step"
+KEYFRAME_CURVES = (KEYFRAME_CURVE_LINEAR, KEYFRAME_CURVE_EASE, KEYFRAME_CURVE_STEP)
+
+
+def _interpolate_keyframes(
+    keyframes: list[tuple[float, float]], t: float, curve: str = KEYFRAME_CURVE_LINEAR
+) -> float:
+    """Interpolates between `(time, value)` pairs already sorted by time,
+    shaped by `curve` (see `KEYFRAME_CURVES`). Held constant outside the
+    recorded range — a preview should never guess past the last keyframe
+    the user actually set."""
     if len(keyframes) == 1:
         return keyframes[0][1]
     if t <= keyframes[0][0]:
@@ -94,7 +112,12 @@ def _interpolate_keyframes(keyframes: list[tuple[float, float]], t: float) -> fl
         if t0 <= t <= t1:
             if t1 == t0:
                 return v1
-            return v0 + (v1 - v0) * ((t - t0) / (t1 - t0))
+            if curve == KEYFRAME_CURVE_STEP:
+                return v0
+            ratio = (t - t0) / (t1 - t0)
+            if curve == KEYFRAME_CURVE_EASE:
+                ratio = ratio * ratio * (3.0 - 2.0 * ratio)
+            return v0 + (v1 - v0) * ratio
     return keyframes[-1][1]  # unreachable, defensive
 
 
@@ -199,6 +222,65 @@ def _combine_sliders(sliders) -> list[tuple[str, object]]:
     return tagged
 
 
+class _CurvePreviewWidget(QWidget):
+    """RM10.md section 3: plots the actual interpolation curve between a
+    slider's own recorded keyframes -- not a schematic, the real function
+    `set_time` evaluates -- so choosing "ease" vs. "linear" vs. "paliers"
+    in `_edit_keyframe_curve`'s dialog is something the user can *see*
+    change, not just a label in a combo box."""
+
+    _MARGIN = 12
+    _SAMPLES = 200
+
+    def __init__(self, keyframes: list[tuple[float, float]], curve: str, parent=None):
+        super().__init__(parent)
+        self._keyframes = keyframes
+        self._curve = curve
+        self.setMinimumSize(260, 120)
+
+    def set_curve(self, curve: str) -> None:
+        self._curve = curve
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor("#1e1e1e"))
+        m = self._MARGIN
+        w, h = self.width() - 2 * m, self.height() - 2 * m
+        if w <= 0 or h <= 0 or len(self._keyframes) < 2:
+            return
+
+        t0, t1 = self._keyframes[0][0], self._keyframes[-1][0]
+        values = [v for _, v in self._keyframes]
+        v_lo, v_hi = min(values), max(values)
+        if v_hi == v_lo:
+            v_lo, v_hi = v_lo - 1.0, v_hi + 1.0  # a flat curve still needs a visible span
+
+        def to_point(t: float, v: float) -> tuple[float, float]:
+            x = m + (t - t0) / (t1 - t0) * w if t1 > t0 else m
+            y = m + h - (v - v_lo) / (v_hi - v_lo) * h
+            return x, y
+
+        painter.setPen(QPen(QColor("#555555"), 1))
+        painter.drawRect(m, m, w, h)
+
+        painter.setPen(QPen(QColor("#64b5f6"), 2))
+        prev = None
+        for i in range(self._SAMPLES + 1):
+            t = t0 + (t1 - t0) * (i / self._SAMPLES)
+            value = _interpolate_keyframes(self._keyframes, t, self._curve)
+            point = to_point(t, value)
+            if prev is not None:
+                painter.drawLine(int(prev[0]), int(prev[1]), int(point[0]), int(point[1]))
+            prev = point
+
+        painter.setPen(QPen(QColor("#ffb74d"), 1))
+        painter.setBrush(QColor("#ffb74d"))
+        for t, v in self._keyframes:
+            x, y = to_point(t, v)
+            painter.drawEllipse(int(x) - 3, int(y) - 3, 6, 6)
+
+
 class _LiteralState:
     """Mutable, editor-local mirror of a detected literal (of any kind).
 
@@ -209,9 +291,9 @@ class _LiteralState:
     previous tick before the engine has had a chance to re-detect literals.
     """
 
-    __slots__ = ("kind", "start", "end", "value", "min", "max", "category", "initial_value", "keyframes")
+    __slots__ = ("kind", "start", "end", "value", "min", "max", "category", "initial_value", "keyframes", "curve")
 
-    def __init__(self, kind: str, lit, initial_value=None, keyframes=None):
+    def __init__(self, kind: str, lit, initial_value=None, keyframes=None, curve=None):
         self.kind = kind
         self.start = lit.start
         self.end = lit.end
@@ -242,6 +324,7 @@ class _LiteralState:
         # only — see the module docstring's "keyframing" paragraph. Empty
         # for every other kind and for a scalar slider nobody keyframed.
         self.keyframes: list[tuple[float, float]] = list(keyframes) if keyframes else []
+        self.curve: str = curve if curve in KEYFRAME_CURVES else KEYFRAME_CURVE_LINEAR
 
 
 class SlidersPanel(QTabWidget):
@@ -390,6 +473,8 @@ class SlidersPanel(QTabWidget):
                 entry["decimals"] = spin.decimals()
             if state.keyframes:
                 entry["keyframes"] = [[t, v] for t, v in state.keyframes]
+                if state.curve != KEYFRAME_CURVE_LINEAR:
+                    entry["curve"] = state.curve
             layout.append(entry)
         return layout
 
@@ -421,6 +506,8 @@ class SlidersPanel(QTabWidget):
             # below — a layout entry with a bad/missing range shouldn't
             # also lose its keyframes.
             state.keyframes = _parse_keyframes(entry.get("keyframes"))
+            entry_curve = entry.get("curve")
+            state.curve = entry_curve if entry_curve in KEYFRAME_CURVES else KEYFRAME_CURVE_LINEAR
             self._refresh_keyframe_button(ordinal)
 
             try:
@@ -458,6 +545,19 @@ class SlidersPanel(QTabWidget):
             self._set_slider_from_value(slider, new_min, new_max, value)
 
     def rebuild(self, source: str, sliders) -> None:
+        # RM10.md section 1, item 10: `QTabWidget.clear()` (Qt's own,
+        # inherited here since `SlidersPanel` is a `QTabWidget`) removes
+        # every page from the tab bar but, per Qt's own documentation,
+        # deliberately does **not** delete the page widgets themselves --
+        # every previous `rebuild()` call's category pages (each holding a
+        # handful of buttons/spinboxes/rows) would otherwise leak
+        # permanently on every single tab switch or edit that triggers a
+        # rebuild. Verified: a 3000-iteration tab-switch/recompile stress
+        # test (`test_perf_stress_rm10.py`) showed steady, roughly linear
+        # growth (~+116% over 2700 post-warmup iterations) before this fix,
+        # and no meaningful growth after it.
+        for i in range(self.count()):
+            self.widget(i).deleteLater()
         self.clear()
         tagged = _combine_sliders(sliders)
         self._literals = [_LiteralState(kind, lit) for kind, lit in tagged]
@@ -550,6 +650,21 @@ class SlidersPanel(QTabWidget):
             spin.setMinimum(int(lit.min))
             spin.setMaximum(int(lit.max))
             spin.setSingleStep(1)
+            # RM10.md section 3: the slider's own 0..SLIDER_STEPS internal
+            # scale is far finer than most int ranges (e.g. 1000 raw
+            # positions for an 0..16 iteration-count range), so Qt's default
+            # singleStep of 1 *raw* unit moves the mapped int value by a
+            # fraction that rounds right back to where it started -- mouse
+            # wheel or keyboard arrows focused on the slider itself would
+            # visibly do nothing for many ticks in a row, unlike the exact
+            # 1-per-tick response of the paired QSpinBox right next to it.
+            # Scaled so one notch reliably moves the rounded int by (at
+            # least) 1, matching the spinbox -- except when the int range
+            # itself exceeds SLIDER_STEPS, where 1 raw unit already covers
+            # more than 1 int value and further scaling would only overshoot.
+            span = max(1, int(lit.max) - int(lit.min))
+            slider.setSingleStep(max(1, round(SLIDER_STEPS / span)))
+            slider.setPageStep(slider.singleStep())
         else:
             spin = _SliderSpinBox()
             spin.setDecimals(decimals)
@@ -691,11 +806,13 @@ class SlidersPanel(QTabWidget):
         tagged = _combine_sliders(sliders)
         old_initial_values = [state.initial_value for state in self._literals]
         old_keyframes = [state.keyframes for state in self._literals]
+        old_curves = [state.curve for state in self._literals]
         self._literals = [
             _LiteralState(
                 kind, lit,
                 initial_value=old_initial_values[i] if i < len(old_initial_values) else None,
                 keyframes=old_keyframes[i] if i < len(old_keyframes) else None,
+                curve=old_curves[i] if i < len(old_curves) else None,
             )
             for i, (kind, lit) in enumerate(tagged)
         ]
@@ -1038,20 +1155,36 @@ class SlidersPanel(QTabWidget):
         did to that slider by hand (drag, typed value, reset, randomize):
         the manual edit gets silently overwritten within a single frame,
         every time, and never actually sticks — see the module docstring's
-        "BUG FIX" paragraph."""
+        "BUG FIX" paragraph.
+
+        RM10.md section 3: `setUpdatesEnabled(False)` around the per-slider
+        widget updates below coalesces their repaints into one, instead of
+        each `spin.setValue()` triggering its own immediate layout/paint
+        pass. With only a handful of simultaneously keyframed sliders the
+        difference is negligible, but a shader with several dozen of them
+        animating at once (measured: ~50) could otherwise spike a single
+        `set_time()` call past 40ms on some ticks — an entire render frame
+        (or several) spent just updating sliders, before the GPU render
+        call for that frame has even started. Confirmed empirically: with
+        this guard, the same 50-simultaneously-keyframed-sliders case never
+        exceeds ~10ms."""
         if t == self._time:
             return
         self._time = t
-        for ordinal, (state, widgets) in enumerate(zip(self._literals, self._rows)):
-            if widgets is None or not state.keyframes:
-                continue
-            value = _interpolate_keyframes(state.keyframes, t)
-            if state.kind == "int":
-                value = round(value)
-            if abs(value - state.value) < 1e-6:
-                continue
-            _, spin = widgets
-            spin.setValue(value)  # triggers _on_spin_changed -> emits the edit
+        self.setUpdatesEnabled(False)
+        try:
+            for ordinal, (state, widgets) in enumerate(zip(self._literals, self._rows)):
+                if widgets is None or not state.keyframes:
+                    continue
+                value = _interpolate_keyframes(state.keyframes, t, state.curve)
+                if state.kind == "int":
+                    value = round(value)
+                if abs(value - state.value) < 1e-6:
+                    continue
+                _, spin = widgets
+                spin.setValue(value)  # triggers _on_spin_changed -> emits the edit
+        finally:
+            self.setUpdatesEnabled(True)
 
     def add_keyframe(self, ordinal: int) -> None:
         """Records this slider's current value as a keyframe at the
@@ -1089,11 +1222,65 @@ class SlidersPanel(QTabWidget):
         add_action = menu.addAction(tr("sliders_panel.add_keyframe_menu", time=f"{self._time:.2f}"))
         clear_action = menu.addAction(tr("sliders_panel.clear_keyframes_menu"))
         clear_action.setEnabled(bool(state.keyframes))
+        curve_action = menu.addAction(tr("sliders_panel.edit_curve_menu"))
+        # RM10.md section 3: a curve shape only means anything once there
+        # are (at least) two keyframes to interpolate *between* -- offered
+        # but disabled rather than hidden, same convention as
+        # `clear_action`, so the option stays discoverable either way.
+        curve_action.setEnabled(len(state.keyframes) >= 2)
         chosen = menu.exec(global_pos)
         if chosen == add_action:
             self.add_keyframe(ordinal)
         elif chosen == clear_action:
             self.clear_keyframes(ordinal)
+        elif chosen == curve_action:
+            self._edit_keyframe_curve(ordinal)
+
+    def _edit_keyframe_curve(self, ordinal: int) -> None:
+        """RM10.md section 3: lets the interpolation *shape* between this
+        slider's keyframes be chosen and actually seen -- not just a bare
+        list of (time, value) pairs. `_CurvePreviewWidget` plots the real
+        keyframes with the currently-selected curve live, so switching the
+        combo box shows exactly what playback will do before committing to
+        it."""
+        if ordinal >= len(self._literals):
+            return
+        state = self._literals[ordinal]
+        if state.kind not in ("float", "int") or len(state.keyframes) < 2:
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("dialogs.keyframe_curve.title"))
+        layout = QVBoxLayout(dialog)
+
+        combo = QComboBox()
+        combo.addItem(tr("dialogs.keyframe_curve.linear"), KEYFRAME_CURVE_LINEAR)
+        combo.addItem(tr("dialogs.keyframe_curve.ease"), KEYFRAME_CURVE_EASE)
+        combo.addItem(tr("dialogs.keyframe_curve.step"), KEYFRAME_CURVE_STEP)
+        combo.setCurrentIndex(KEYFRAME_CURVES.index(state.curve))
+        layout.addWidget(combo)
+
+        preview = _CurvePreviewWidget(state.keyframes, state.curve)
+        layout.addWidget(preview)
+        combo.currentIndexChanged.connect(lambda i: preview.set_curve(combo.itemData(i)))
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.Accepted:
+            return
+        state.curve = combo.currentData()
+        # Forces set_time's re-evaluation on the next tick even if the
+        # clock's own `t` hasn't moved: only the curve *shape* changed,
+        # which set_time's own `t == self._time` guard has no way to know
+        # about on its own, so the currently-displayed value could
+        # otherwise keep showing the old curve's result until the clock
+        # itself advances again.
+        current_t = self._time
+        self._time = None
+        self.set_time(current_t)
 
     def _refresh_keyframe_button(self, ordinal: int) -> None:
         if ordinal >= len(self._keyframe_buttons):

@@ -20,6 +20,20 @@ class Viewport(QWidget):
     renderError = Signal(str)
     frameRendered = Signal(float)  # wall-clock time spent in engine.render(), in ms
     timeUpdated = Signal(float)  # current iTime (seconds), every tick, paused or not
+    # RM10.md section 4: emitted after every successful `Engine.resize` call
+    # -- whether triggered by the widget's own on-screen size changing or by
+    # `set_render_scale` -- so the footer's resolution indicator never goes
+    # stale. Carries the actual (post-clamp) render size, not just the
+    # widget's own size, since those two only match at 100% scale.
+    resolutionChanged = Signal(int, int, float)  # width, height, scale
+    # RM10.md section 1, item 8: emitted instead of raising out of the
+    # resize-debounce timer's slot when `Engine.resize` fails (typically
+    # insufficient VRAM for the new size -- a window dragged onto a very
+    # large/high-DPI display, say). Kept separate from `renderError`
+    # (surfaced as a shader *compile* error in the footer, see
+    # `MainWindow._on_render_error`) since conflating the two would
+    # misleadingly suggest the shader's own code is at fault.
+    resizeError = Signal(str)
 
     def __init__(self, engine, parent=None):
         super().__init__(parent)
@@ -33,6 +47,12 @@ class Viewport(QWidget):
 
         self._render_width = VIEWPORT_WIDTH
         self._render_height = VIEWPORT_HEIGHT
+        # RM10.md section 4: independent of the widget's own on-screen size
+        # -- `_apply_resize` multiplies the widget size by this factor
+        # before asking the engine to allocate, so a heavy shader can be
+        # previewed at a fraction of its full resolution (then upscaled to
+        # fill the widget on screen, see `paintEvent`) to stay fluid.
+        self._render_scale = 1.0
 
         self._pixmap: QPixmap | None = None
         self._elapsed = QElapsedTimer()
@@ -40,6 +60,19 @@ class Viewport(QWidget):
         self._last_time_s = 0.0
         self._frame = 0
         self._paused = False
+        # RM10.md section 4: `_elapsed` itself never stops ticking across
+        # a pause (only `_tick` below decides whether to advance
+        # `_last_time_s` from it) -- without `_paused_accum_s` correcting
+        # for that, the very first tick after resuming would compute `dt`
+        # as the *entire* real-world pause duration in one go (`now_s`
+        # already includes the wall-clock time spent paused, but
+        # `_last_time_s` was left frozen at the moment of pausing), making
+        # iTime visibly jump forward by however long the pause lasted
+        # instead of resuming exactly where it left off. `_paused_accum_s`
+        # is the running total of real time spent paused so far, always
+        # subtracted back out when computing the animation clock.
+        self._paused_accum_s = 0.0
+        self._pause_started_s = 0.0
         self._mouse = (0.0, 0.0, 0.0, 0.0)
         self._click_pos = (0.0, 0.0)
 
@@ -67,6 +100,17 @@ class Viewport(QWidget):
         self._resize_timer.timeout.connect(self._apply_resize)
 
     def set_paused(self, paused: bool) -> None:
+        if paused == self._paused:
+            return
+        now_s = self._elapsed.elapsed() / 1000.0
+        if paused:
+            self._pause_started_s = now_s
+        else:
+            # Folds however long this pause just lasted into the running
+            # total, so the next tick's `now_s` (see `_tick`) picks back
+            # up exactly at `_last_time_s` instead of jumping ahead by the
+            # real time that just passed.
+            self._paused_accum_s += now_s - self._pause_started_s
         self._paused = paused
 
     def render_size(self) -> tuple[int, int]:
@@ -100,20 +144,51 @@ class Viewport(QWidget):
         self._elapsed.restart()
         self._last_time_s = 0.0
         self._frame = 0
+        self._paused_accum_s = 0.0
+        self._pause_started_s = 0.0
         self.timeUpdated.emit(0.0)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._resize_timer.start(RESIZE_DEBOUNCE_MS)
 
+    def set_render_scale(self, scale: float) -> None:
+        """Changes the render-resolution fraction (see `_render_scale`) and
+        applies it immediately -- unlike a plain window resize, a deliberate
+        scale change from the footer combo box shouldn't sit through
+        `RESIZE_DEBOUNCE_MS` of visible lag before taking effect."""
+        if scale == self._render_scale:
+            return
+        self._render_scale = scale
+        self._resize_timer.stop()
+        self._apply_resize()
+        # `_apply_resize` only emits `resolutionChanged` when the computed
+        # pixel size actually changes -- which it always does here except
+        # at the `MIN_VIEWPORT_SIZE` floor (a tiny window already clamped
+        # at 100%, where a lower percentage can't shrink it further). The
+        # footer's indicator must still reflect the newly chosen percentage
+        # in that edge case, so it's re-emitted unconditionally.
+        self.resolutionChanged.emit(self._render_width, self._render_height, self._render_scale)
+
     def _apply_resize(self) -> None:
-        new_width = max(MIN_VIEWPORT_SIZE, self.width())
-        new_height = max(MIN_VIEWPORT_SIZE, self.height())
+        new_width = max(MIN_VIEWPORT_SIZE, round(self.width() * self._render_scale))
+        new_height = max(MIN_VIEWPORT_SIZE, round(self.height() * self._render_scale))
         if (new_width, new_height) == (self._render_width, self._render_height):
             return
-        self._engine.resize(new_width, new_height)
+        try:
+            self._engine.resize(new_width, new_height)
+        except RuntimeError as exc:
+            # The engine is left at its previous, still-working resolution
+            # on failure (see `renderer::Engine::resize`) -- `_render_width`/
+            # `_render_height` must stay in sync with that, not the size
+            # this widget happens to occupy on screen now, or the next
+            # render tick would think the engine is already at the new
+            # (never actually allocated) size and skip retrying.
+            self.resizeError.emit(str(exc))
+            return
         self._render_width = new_width
         self._render_height = new_height
+        self.resolutionChanged.emit(new_width, new_height, self._render_scale)
 
     def mousePressEvent(self, event):
         if event.button() != Qt.LeftButton:
@@ -166,7 +241,7 @@ class Viewport(QWidget):
         event.accept()
 
     def _tick(self) -> None:
-        now_s = self._elapsed.elapsed() / 1000.0
+        now_s = self._elapsed.elapsed() / 1000.0 - self._paused_accum_s
         dt = 0.0 if self._paused else max(0.0, now_s - self._last_time_s)
         if not self._paused:
             self._last_time_s = now_s
@@ -205,11 +280,20 @@ class Viewport(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         if self._pixmap is not None:
-            painter.drawPixmap(0, 0, self._pixmap)
-            if self._pixmap.size() != self.size():
-                # letterbox the remainder while a resize is still debouncing
-                painter.fillRect(self._pixmap.width(), 0, self.width(), self.height(), Qt.black)
-                painter.fillRect(0, self._pixmap.height(), self.width(), self.height(), Qt.black)
+            if self._render_scale != 1.0:
+                # A deliberately downscaled preview is stretched back up to
+                # fill the widget -- rendering fewer pixels is the whole
+                # point (RM10.md section 4), but the on-screen viewport
+                # shouldn't shrink along with it; aspect ratio is preserved
+                # since `_apply_resize` scales width/height by the same
+                # factor.
+                painter.drawPixmap(self.rect(), self._pixmap)
+            else:
+                painter.drawPixmap(0, 0, self._pixmap)
+                if self._pixmap.size() != self.size():
+                    # letterbox the remainder while a resize is still debouncing
+                    painter.fillRect(self._pixmap.width(), 0, self.width(), self.height(), Qt.black)
+                    painter.fillRect(0, self._pixmap.height(), self.width(), self.height(), Qt.black)
         else:
             painter.fillRect(self.rect(), Qt.black)
 

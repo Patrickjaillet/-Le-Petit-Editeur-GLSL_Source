@@ -5,8 +5,9 @@
     "englishName": "Japanese"
   },
   "app": {
-    "window_title": "Petit Editeur GLSL v{version}",
-    "toolbar_name": "メイン"
+    "window_title": "Petit Editeur GLSL v{version} [*]",
+    "toolbar_name": "メイン",
+    "window_title_file": "{filename} [*] — Petit Editeur GLSL v{version}"
   },
   "tabs": {
     "image": "画像",
@@ -28,6 +29,9 @@
       "save_as": "名前を付けて保存(&A)…",
       "save_project": "プロジェクトを名前を付けて保存(&J)…",
       "export_golfed": "ゴルフ後のコードをエクスポート(&E)…",
+      "export_compiled_menu": "コンパイル済みシェーダーのエクスポート先",
+      "export_hlsl": "HLSL (.hlsl)…",
+      "export_msl": "Metal (.metal)…",
       "export_png": "画像をエクスポート (PNG)(&I)…",
       "export_video": "動画をエクスポート (MP4)(&V)…",
       "preferences": "環境設定(&P)…",
@@ -40,6 +44,7 @@
       "golf": "コードをゴルフする(&G)",
       "golf_all": "プロジェクト全体をゴルフする(&T)",
       "undo_golf": "ゴルフを元に戻す(&U)",
+      "degolf": "コードを整形(&F)",
       "shortcuts": "キーボードショートカット(&K)…"
     },
     "help": {
@@ -54,7 +59,9 @@
     "play_pause_tooltip": "時間 (iTime) を再生/一時停止 — キーフレームを持つスライダーもアニメーションします",
     "reset_time": "時間をリセット",
     "reset_time_tooltip": "iTime を 0 にリセットします — キーフレームシーケンスを最初から再生し直すのに便利です",
-    "golf": "ゴルフ 🏌"
+    "golf": "ゴルフ 🏌",
+    "degolf": "整形 🧹",
+    "degolf_tooltip": "コードを再フォーマットします(インデント、1行1文、スペース)。名前の変更や動作の変更は行いません"
   },
   "actions": {
     "file.new": "ファイル: 新規",
@@ -64,6 +71,8 @@
     "file.save_as": "ファイル: 名前を付けて保存…",
     "file.save_project": "ファイル: プロジェクトを名前を付けて保存…",
     "file.export_golfed": "ファイル: ゴルフ後のコードをエクスポート…",
+    "file.export_hlsl": "ファイル: HLSLへエクスポート…",
+    "file.export_msl": "ファイル: Metal (MSL) へエクスポート…",
     "file.export_png": "ファイル: 画像をエクスポート (PNG)…",
     "file.export_video": "ファイル: 動画をエクスポート (MP4)…",
     "file.preferences": "ファイル: 環境設定…",
@@ -76,9 +85,14 @@
     "toolbar.compile": "ツールバー: コンパイル",
     "toolbar.play_pause": "ツールバー: 再生/一時停止",
     "toolbar.reset_time": "ツールバー: 時間をリセット",
-    "toolbar.golf": "ツールバー: ゴルフ"
+    "toolbar.golf": "ツールバー: ゴルフ",
+    "edit.degolf": "編集: コードを整形",
+    "toolbar.degolf": "ツールバー: 整形"
   },
   "dialogs": {
+    "common": {
+      "open_folder_button": "フォルダを開く"
+    },
     "about": {
       "title": "バージョン情報",
       "body": "Le Petit Editeur GLSL — バージョン {version}\nCopyright © 2026 Patrick JAILLET — All rights reserved\nメール: sandefjord.development@proton.me\nウェブサイト: https://patrickjaillet.github.io/Le-Petit-Editeur-GLSL"
@@ -113,6 +127,10 @@
       "body": "ゴルフ後のコードがコンパイルできなくなりました — エディターは変更されていません。おそらくゴルファーのバグです。報告してください。\n\nコンパイルエラー:\n{error}",
       "body_all_or_nothing": "[{label}] ゴルフ後のコードがコンパイルできません(共通をゴルフした状態)— 何も変更されませんでした(オール・オア・ナッシング)。\n\nコンパイルエラー:\n{error}"
     },
+    "degolf_cancelled": {
+      "title": "整形キャンセル",
+      "body": "再フォーマットされたコードはもうコンパイルできません — エディタは変更されていません。整形機能のバグの可能性があります。報告してください。\n\nコンパイルエラー:\n{error}"
+    },
     "undo_golf": {
       "title": "ゴルフを元に戻す",
       "body": "元に戻すゴルフがありません。"
@@ -123,11 +141,15 @@
     },
     "golf_all_result": {
       "title": "プロジェクト全体をゴルフする",
-      "body": "{pass_count} パス + 共通をゴルフしました: {before} -> {after} バイト (-{percent}%)。"
+      "body": "{pass_count} パス + 共通をゴルフしました: {before} -> {after} バイト (-{percent}%)。\n\n{breakdown}",
+      "per_pass_line": "{label}: {before} -> {after} バイト (-{percent}%)"
     },
     "unsaved_changes": {
       "title": "未保存の変更",
-      "body": "現在のプロジェクトには未保存の変更があります。続行してこれらを破棄しますか?"
+      "body": "現在のプロジェクトには未保存の変更があります。続行してこれらを破棄しますか?",
+      "save_button": "保存",
+      "discard_button": "保存しない",
+      "cancel_button": "キャンセル"
     },
     "open_shader": {
       "title": "シェーダーを開く",
@@ -135,7 +157,8 @@
     },
     "open_project": {
       "title": "プロジェクトを開く",
-      "filter": "プロジェクト (*.json)"
+      "filter": "プロジェクト (*.json)",
+      "future_format_warning": "このプロジェクトは、より新しいバージョンのソフトウェアで保存されています(フォーマット{file_format}、このバージョンが認識できるのはフォーマット{current_format}までです)。一部の設定が正しく読み込まれない場合があります — ソフトウェアの更新をご検討ください。"
     },
     "open_error": {
       "title": "開く",
@@ -160,15 +183,32 @@
     },
     "save_project": {
       "title": "プロジェクトを保存",
-      "filter": "プロジェクト (*.json)"
+      "filter": "プロジェクト (*.json)",
+      "export_success": "プロジェクトを保存しました:\n{path}"
     },
     "export_golfed": {
       "title": "ゴルフ後のコードをエクスポート",
-      "filter": "GLSL (*.frag *.glsl)"
+      "filter": "GLSL (*.frag *.glsl)",
+      "export_success": "ゴルフ済みコードをエクスポートしました:\n{path}"
+    },
+    "export_shader": {
+      "title": "コンパイル済みシェーダーをエクスポート",
+      "not_reeditable_hlsl": "生成されるHLSLファイルは、エクスポート時点でコンパイルされたシェーダーを忠実に変換したものです。本ソフトウェアはHLSLを読み込むことができないため、このファイルをエディタに貼り戻して編集を続けることはできません — 以降の変更は必ずGLSL/WGSLのソースから行ってください。",
+      "not_reeditable_msl": "生成されるMetal (MSL) ファイルは、エクスポート時点でコンパイルされたシェーダーを忠実に変換したものです。本ソフトウェアはMSLを読み込むことができないため、このファイルをエディタに貼り戻して編集を続けることはできません — 以降の変更は必ずGLSL/WGSLのソースから行ってください。",
+      "bindings_caveat_hlsl": "このシェーダーが独自のテクスチャや設定(iChannel、uniform)を使用している場合、書き出されたファイルは自動的な規則に従ってそれらを接続します。この規則がターゲットのエンジンが期待するものと一致しない場合があります。そのまま正しくコンパイルされない場合は、ファイルを少し手動で調整する必要があるかもしれません。",
+      "bindings_caveat_msl": "このシェーダーが独自のテクスチャや設定(iChannel、uniform)を使用している場合、書き出されたファイルは自動的な規則に従ってそれらを接続します。この規則がターゲットのエンジンが期待するものと一致しない場合があります。そのまま正しくコンパイルされない場合は、ファイルを少し手動で調整する必要があるかもしれません。",
+      "pixel_fidelity_caveat": "このファイルをサードパーティのエンジンで再コンパイルしても、ここに表示されているライブプレビューとピクセル単位で完全に一致するレンダリング結果になる保証はありません — この変換は機能的な正しさを目指したものであり、契約上保証されたビット単位の完全一致ではありません。ターゲットエンジンごとに個別に確認してください。",
+      "common_tab_body": "Commonタブ単独ではコンパイルされたパスになりません。HLSL/Metalへエクスポートする前に、BufferまたはImageタブを選択してください。",
+      "filter_hlsl": "HLSL (*.hlsl)",
+      "filter_msl": "Metal (*.metal)",
+      "failed_title": "エクスポートを中止しました",
+      "failed_body": "このシェーダーの変換に失敗しました:\n\n{error}",
+      "export_success": "ファイルをエクスポートしました:\n{path}"
     },
     "export_png": {
       "title": "画像をエクスポート",
-      "nothing_to_export": "現在エクスポートするものがありません。"
+      "nothing_to_export": "現在エクスポートするものがありません。",
+      "export_success": "画像をエクスポートしました:\n{path}"
     },
     "export_video": {
       "title": "動画をエクスポート (MP4)",
@@ -185,13 +225,25 @@
       "crf_preset_quality": "高品質",
       "crf_preset_balanced": "バランス",
       "crf_preset_smallest": "最小サイズ",
+      "audio_group": "音楽",
+      "audio_enable": "オーディオトラックを追加",
+      "audio_browse": "参照…",
+      "audio_placeholder": "ファイルが選択されていません",
+      "audio_file_filter": "オーディオ ({extensions})",
+      "audio_volume": "音量",
+      "audio_start_offset": "開始位置",
+      "audio_bitrate": "音声品質",
+      "audio_loop": "動画より短い場合は音楽をループ再生",
       "estimated_size": "推定サイズ: ~{size}",
       "save_dialog_title": "動画をエクスポート",
       "save_dialog_default_name": "shader.mp4",
       "save_dialog_filter": "動画 (*.mp4)",
       "ffmpeg_missing": "ffmpeg が見つかりません ({path})。\n\nCOMPILATION.md の「動画エクスポート」セクションを参照してください。期待されるバイナリは packaging/bin/ffmpeg.exe です。",
       "export_failed": "エクスポートに失敗しました:\n{error}",
-      "export_success": "動画のエクスポートに成功しました ({frames} フレーム、{width}×{height} @ {fps} fps):\n{path}"
+      "export_success": "動画のエクスポートに成功しました ({frames} フレーム、{width}×{height} @ {fps} fps):\n{path}",
+      "resolution_too_large": "解像度 {width}×{height} が高すぎます。このグラフィックカードは1辺あたり最大 {max}px までしかサポートしていません。より小さい解像度を選んでください。",
+      "resize_failed": "この解像度でのエクスポートを準備できませんでした: {error}",
+      "restore_resolution_failed": "警告: エクスポート後に以前のプレビュー解像度を復元できませんでした: {error}"
     },
     "export_progress": {
       "title": "動画をエクスポート (MP4)",
@@ -209,7 +261,9 @@
       "shadertoy_api_key": "Shadertoy API キー",
       "shadertoy_api_key_placeholder": "(空欄 = 次回インポート時に再度確認)",
       "language": "言語",
-      "language_restart_notice": "言語の変更は次回アプリケーション起動時に反映されます。"
+      "language_restart_notice": "言語の変更は次回アプリケーション起動時に反映されます。",
+      "autosave_enabled": "自動バックアップ",
+      "autosave_interval_minutes": "バックアップ間隔"
     },
     "shortcuts": {
       "title": "キーボードショートカット",
@@ -227,7 +281,10 @@
       "face_row": "面 {face}",
       "choose_face_image": "面の画像を選択",
       "missing_faces_title": "キューブマップ",
-      "missing_faces_body": "6面すべてを設定する必要があります。"
+      "missing_faces_body": "6面すべてを設定する必要があります。",
+      "file_not_found_body": "次の面のファイルが見つかりません: {faces}。",
+      "face_not_square": "面 {face}: {width}x{height} — キューブマップの面は正方形である必要があります。",
+      "face_size_mismatch": "面 {face}: {size}x{size}（他の面と同じ {expected}x{expected} が必要です）。"
     },
     "slider_bounds": {
       "title": "スライダーの範囲",
@@ -235,6 +292,12 @@
       "max": "最大",
       "decimals": "小数桁数",
       "menu_edit": "最小 / 最大を編集…"
+    },
+    "keyframe_curve": {
+      "title": "補間カーブ",
+      "linear": "リニア",
+      "ease": "イーズ（滑らか）",
+      "step": "ステップ"
     },
     "color_picker": {
       "title": "色を選択"
@@ -254,7 +317,23 @@
     },
     "ichannel_error": {
       "title": "iChannel"
-    }
+    },
+    "ichannel_drop_rejected": {
+      "title": "サポートされていないファイル",
+      "body": "このファイル（{extension}）は iChannel でサポートされている画像・動画・音声形式ではありません。",
+      "no_extension": "拡張子なし"
+    },
+    "crash_recovery": {
+      "title": "未保存の作業を復元しますか？",
+      "body": "ソフトウェアが正常に終了しませんでした。{timestamp} の自動バックアップがあります。復元しますか？",
+      "restore_button": "復元",
+      "discard_button": "破棄"
+    },
+    "gpu_error": {
+      "title": "グラフィックカードがサポートされていません",
+      "body": "起動できませんでした。このコンピューターには対応するグラフィックカードが見つかりません。\n\nグラフィックカードのドライバーを更新してから、ソフトウェアを再起動してください。\n\n技術詳細: {error}"
+    },
+    "viewport_resize_error": "プレビューのサイズは変更されませんでした（グラフィックメモリ不足）: {error}"
   },
   "sliders_panel": {
     "filter_placeholder": "絞り込み…",
@@ -278,6 +357,7 @@
     ],
     "add_keyframe_menu": "キーフレームを追加 (t={time}秒)",
     "clear_keyframes_menu": "キーフレームを消去",
+    "edit_curve_menu": "補間カーブ…",
     "add_keyframe_tooltip": "現在の時間にキーフレームを追加 (t={time}秒)",
     "keyframe_button_tooltip": "クリック: t={time}秒で追加/更新 — 右クリック: その他のオプション",
     "reset_category": "↺ カテゴリーをリセット",
@@ -290,7 +370,7 @@
   "ichannel_panel": {
     "video_filter": "動画 (*.mp4 *.mov *.m4v *.avi *.mkv *.webm)",
     "audio_filter": "オーディオ (*.mp3 *.wav *.ogg *.flac)",
-    "image_filter": "画像 (*.png *.jpg *.jpeg *.bmp)",
+    "image_filter": "画像 (*.png *.jpg *.jpeg *.bmp *.gif *.webp)",
     "source_empty": "空",
     "source_image": "画像(ファイル)",
     "source_video": "動画(ファイル)…",
@@ -305,6 +385,12 @@
     "change_cubemap": "面を編集…",
     "change_video": "動画を変更…",
     "change_audio": "オーディオを変更…",
+    "volume_tooltip": "オーディオ入力の音量（システム音量とは独立）",
+    "mute_tooltip": "ミュート",
+    "procedural_scale_label": "パターンサイズ",
+    "procedural_scale_tooltip": "パターンサイズ（セル数／ノイズグリッドの解像度）",
+    "procedural_seed_label": "シード",
+    "procedural_seed_tooltip": "乱数シード（0 = このプリセットのデフォルト）",
     "change_webcam": "ウェブカメラを変更…",
     "choose_video": "iChannel{index} 用の動画を選択",
     "choose_audio": "iChannel{index} 用のオーディオファイルを選択",
@@ -312,16 +398,32 @@
     "procedural_suffix": "{label}(プロシージャル)",
     "thumb_empty": "空",
     "thumb_cube": "CUBE",
-    "default_webcam_tooltip": "既定のウェブカメラ"
+    "default_webcam_tooltip": "既定のウェブカメラ",
+    "source_lost_tooltip": "ソースが失われました: {message}"
   },
   "footer": {
     "fps": "FPS: {fps}",
+    "resolution": "{width}×{height}（{percent}%）",
+    "resolution_tooltip": "プレビューが実際に使用しているレンダリング解像度（ウィンドウサイズとは独立）。",
+    "render_scale_tooltip": "プレビューのレンダースケール（重いシェーダーで滑らかさを保つために下げる）",
     "ready": "準備完了",
     "compile_ok": "コンパイル成功",
     "compile_error": "エラー: {message}",
     "frame_time_tooltip": "フレームごとのレンダリング時間(赤いバー = 約30 FPSより遅い)",
     "size_tooltip": "ゴルフ前後の生サイズと推定 gzip サイズ(実際に転送/保存されるサイズの近似値)。マーカー(< 2 KB / < 4 KB / < 8 KB)は、伝統的なデモシーン 4k/8k コンポの基準に対応しており、ゴルフ後の生サイズを基準としています — 外部スコアとのオンライン比較ではありません。",
     "size_format": "{before} -> {after} バイト (-{percent}%) | gzip {before_gz} -> {after_gz}{tier_suffix}",
-    "size_tier": "< {kb} KB"
+    "size_tier": "< {kb} KB",
+    "size_tier_approaching": "{kb} KBに接近",
+    "dialect_shadertoy": "Shadertoy",
+    "dialect_glsl": "GLSL",
+    "dialect_wgsl": "WGSL",
+    "dialect_tooltip": "{signal} により検出されたモード：{mode}",
+    "dialect_signal_mainimage": "mainImage() の存在",
+    "dialect_signal_voidmain": "void main() の存在",
+    "dialect_signal_version": "#version の存在",
+    "dialect_signal_fragcolor": "gl_FragColor の存在",
+    "dialect_signal_wgslentrypoint": "WGSL の @fragment fn エントリポイントの存在",
+    "dialect_signal_wgsluniformorgeneric": "var<uniform> または WGSL のジェネリック型の存在",
+    "dialect_signal_none": "シグナルなし、直前のモードを維持"
   }
 }

@@ -59,7 +59,11 @@ class ExportProgressDialog(QDialog):
     holds the detail in the last case.
     """
 
-    def __init__(self, engine, n_frames: int, fps: float, width: int, height: int, crf: int, date: tuple, out_path: str, parent=None):
+    def __init__(
+        self, engine, n_frames: int, fps: float, width: int, height: int, crf: int, date: tuple, out_path: str,
+        audio_path: str | None = None, audio_volume_db: float = 0.0, audio_start_offset: float = 0.0,
+        audio_loop: bool = True, audio_bitrate_kbps: int = video_export.DEFAULT_AUDIO_BITRATE_KBPS, parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle(tr("dialogs.export_progress.title"))
         self.setModal(True)
@@ -72,6 +76,11 @@ class ExportProgressDialog(QDialog):
         self._crf = crf
         self._date = date
         self._out_path = out_path
+        self._audio_path = audio_path
+        self._audio_volume_db = audio_volume_db
+        self._audio_start_offset = audio_start_offset
+        self._audio_loop = audio_loop
+        self._audio_bitrate_kbps = audio_bitrate_kbps
 
         self._result: str | None = None
         self._error_message = ""
@@ -152,6 +161,11 @@ class ExportProgressDialog(QDialog):
                 self._crf,
                 self._date,
                 self._out_path,
+                audio_path=self._audio_path,
+                audio_volume_db=self._audio_volume_db,
+                audio_start_offset=self._audio_start_offset,
+                audio_loop=self._audio_loop,
+                audio_bitrate_kbps=self._audio_bitrate_kbps,
                 on_capture_progress=self._on_capture_progress,
                 on_encode_progress=self._on_encode_progress,
                 should_cancel=self._should_cancel,

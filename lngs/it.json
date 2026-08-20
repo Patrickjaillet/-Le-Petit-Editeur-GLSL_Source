@@ -5,8 +5,9 @@
     "englishName": "Italian"
   },
   "app": {
-    "window_title": "Petit Editeur GLSL v{version}",
-    "toolbar_name": "Principale"
+    "window_title": "Petit Editeur GLSL v{version} [*]",
+    "toolbar_name": "Principale",
+    "window_title_file": "{filename} [*] — Petit Editeur GLSL v{version}"
   },
   "tabs": {
     "image": "Immagine",
@@ -28,6 +29,9 @@
       "save_as": "&Salva con nome…",
       "save_project": "Salva il &progetto con nome…",
       "export_golfed": "&Esporta codice golfato…",
+      "export_compiled_menu": "Esporta shader compilato in",
+      "export_hlsl": "HLSL (.hlsl)…",
+      "export_msl": "Metal (.metal)…",
       "export_png": "Esporta un'&immagine (PNG)…",
       "export_video": "Esporta un &video (MP4)…",
       "preferences": "&Preferenze…",
@@ -40,6 +44,7 @@
       "golf": "&Golfa il codice",
       "golf_all": "Golfa &tutto il progetto",
       "undo_golf": "Annulla il &golf",
+      "degolf": "&Sgolfa il codice",
       "shortcuts": "&Scorciatoie da tastiera…"
     },
     "help": {
@@ -54,7 +59,9 @@
     "play_pause_tooltip": "Riproduci/pausa il tempo (iTime) — anima anche gli slider con fotogrammi chiave",
     "reset_time": "Reimposta il tempo",
     "reset_time_tooltip": "Reimposta iTime a 0 — utile per riprodurre una sequenza di fotogrammi chiave dall'inizio",
-    "golf": "Golf 🏌"
+    "golf": "Golf 🏌",
+    "degolf": "Sgolfa 🧹",
+    "degolf_tooltip": "Riformatta il codice (indentazione, un'istruzione per riga, spaziatura) senza rinominare nulla né cambiarne il comportamento"
   },
   "actions": {
     "file.new": "File: Nuovo",
@@ -64,6 +71,8 @@
     "file.save_as": "File: Salva con nome…",
     "file.save_project": "File: Salva il progetto con nome…",
     "file.export_golfed": "File: Esporta codice golfato…",
+    "file.export_hlsl": "File: Esporta in HLSL…",
+    "file.export_msl": "File: Esporta in Metal (MSL)…",
     "file.export_png": "File: Esporta un'immagine (PNG)…",
     "file.export_video": "File: Esporta un video (MP4)…",
     "file.preferences": "File: Preferenze…",
@@ -76,9 +85,14 @@
     "toolbar.compile": "Barra degli strumenti: Compila",
     "toolbar.play_pause": "Barra degli strumenti: Riproduci/Pausa",
     "toolbar.reset_time": "Barra degli strumenti: Reimposta il tempo",
-    "toolbar.golf": "Barra degli strumenti: Golf"
+    "toolbar.golf": "Barra degli strumenti: Golf",
+    "edit.degolf": "Modifica: Sgolfa il codice",
+    "toolbar.degolf": "Barra degli strumenti: Sgolfa"
   },
   "dialogs": {
+    "common": {
+      "open_folder_button": "Apri cartella"
+    },
     "about": {
       "title": "Informazioni",
       "body": "Le Petit Editeur GLSL — versione {version}\nCopyright © 2026 Patrick JAILLET — Tutti i diritti riservati\nEmail: sandefjord.development@proton.me\nSito web: https://patrickjaillet.github.io/Le-Petit-Editeur-GLSL"
@@ -113,6 +127,10 @@
       "body": "Il codice golfato non compila più — l'editor è stato lasciato invariato. Probabilmente è un bug del golfer, si prega di segnalarlo.\n\nErrore di compilazione:\n{error}",
       "body_all_or_nothing": "[{label}] il codice golfato non compila più (con Comune golfato) — nulla è stato modificato (tutto o niente).\n\nErrore di compilazione:\n{error}"
     },
+    "degolf_cancelled": {
+      "title": "Sgolfa annullato",
+      "body": "Il codice riformattato non compila più — l'editor non è stato modificato. È probabilmente un bug dello sgolfatore, per favore segnalalo.\n\nErrore di compilazione:\n{error}"
+    },
     "undo_golf": {
       "title": "Annulla il golf",
       "body": "Nessun golf da annullare."
@@ -123,11 +141,15 @@
     },
     "golf_all_result": {
       "title": "Golfa tutto il progetto",
-      "body": "{pass_count} pass + Comune golfato: {before} -> {after} byte (-{percent}%)."
+      "body": "{pass_count} pass + Comune golfato: {before} -> {after} byte (-{percent}%).\n\n{breakdown}",
+      "per_pass_line": "{label}: {before} -> {after} byte (-{percent}%)"
     },
     "unsaved_changes": {
       "title": "Modifiche non salvate",
-      "body": "Il progetto corrente contiene modifiche non salvate. Continuare e perderle?"
+      "body": "Il progetto corrente contiene modifiche non salvate. Continuare e perderle?",
+      "save_button": "Salva",
+      "discard_button": "Non salvare",
+      "cancel_button": "Annulla"
     },
     "open_shader": {
       "title": "Apri uno shader",
@@ -135,7 +157,8 @@
     },
     "open_project": {
       "title": "Apri un progetto",
-      "filter": "Progetto (*.json)"
+      "filter": "Progetto (*.json)",
+      "future_format_warning": "Questo progetto è stato salvato con una versione più recente del software (formato {file_format}, questa versione conosce solo il formato {current_format}). Alcune impostazioni potrebbero non caricarsi correttamente — valuta di aggiornare il software."
     },
     "open_error": {
       "title": "Apri",
@@ -160,15 +183,32 @@
     },
     "save_project": {
       "title": "Salva il progetto",
-      "filter": "Progetto (*.json)"
+      "filter": "Progetto (*.json)",
+      "export_success": "Progetto salvato con successo:\n{path}"
     },
     "export_golfed": {
       "title": "Esporta codice golfato",
-      "filter": "GLSL (*.frag *.glsl)"
+      "filter": "GLSL (*.frag *.glsl)",
+      "export_success": "Codice golfato esportato con successo:\n{path}"
+    },
+    "export_shader": {
+      "title": "Esporta shader compilato",
+      "not_reeditable_hlsl": "Il file HLSL generato è una traduzione fedele dello shader così com'era compilato al momento dell'esportazione. Questo software non è in grado di rileggere HLSL: non sarà possibile incollare di nuovo questo file .hlsl nell'editor per continuare a modificarlo qui — per qualsiasi modifica successiva ripartire sempre dal sorgente GLSL/WGSL.",
+      "not_reeditable_msl": "Il file Metal (MSL) generato è una traduzione fedele dello shader così com'era compilato al momento dell'esportazione. Questo software non è in grado di rileggere MSL: non sarà possibile incollare di nuovo questo file .metal nell'editor per continuare a modificarlo qui — per qualsiasi modifica successiva ripartire sempre dal sorgente GLSL/WGSL.",
+      "bindings_caveat_hlsl": "Se questo shader usa texture o impostazioni personalizzate (iChannel, uniform), il file esportato le collega seguendo una convenzione automatica che potrebbe non corrispondere a quella del tuo motore di destinazione: il file potrebbe richiedere un piccolo adattamento manuale prima di compilare così com'è.",
+      "bindings_caveat_msl": "Se questo shader usa texture o impostazioni personalizzate (iChannel, uniform), il file esportato le collega seguendo una convenzione automatica che potrebbe non corrispondere a quella del tuo motore di destinazione: il file potrebbe richiedere un piccolo adattamento manuale prima di compilare così com'è.",
+      "pixel_fidelity_caveat": "Non vi è alcuna garanzia che ricompilare questo file in un motore di terze parti produca un rendering pixel-identico rispetto all'anteprima live mostrata qui — la traduzione punta alla correttezza funzionale, non a una corrispondenza bit-esatta garantita contrattualmente; da verificare caso per caso nel motore di destinazione.",
+      "common_tab_body": "La scheda Common non è un pass compilato a sé stante — selezionare una scheda Buffer o Image prima di esportare verso HLSL/Metal.",
+      "filter_hlsl": "HLSL (*.hlsl)",
+      "filter_msl": "Metal (*.metal)",
+      "failed_title": "Esportazione annullata",
+      "failed_body": "La traduzione di questo shader non è riuscita:\n\n{error}",
+      "export_success": "File esportato con successo:\n{path}"
     },
     "export_png": {
       "title": "Esporta un'immagine",
-      "nothing_to_export": "Nulla da esportare al momento."
+      "nothing_to_export": "Nulla da esportare al momento.",
+      "export_success": "Immagine esportata con successo:\n{path}"
     },
     "export_video": {
       "title": "Esporta un video (MP4)",
@@ -185,13 +225,25 @@
       "crf_preset_quality": "Qualità",
       "crf_preset_balanced": "Bilanciato",
       "crf_preset_smallest": "Dimensione minima",
+      "audio_group": "Musica",
+      "audio_enable": "Aggiungi una traccia audio",
+      "audio_browse": "Sfoglia…",
+      "audio_placeholder": "Nessun file selezionato",
+      "audio_file_filter": "Audio ({extensions})",
+      "audio_volume": "Volume",
+      "audio_start_offset": "Punto di partenza",
+      "audio_bitrate": "Qualità audio",
+      "audio_loop": "Ripeti la musica in loop se più corta del video",
       "estimated_size": "Dimensione stimata: ~{size}",
       "save_dialog_title": "Esporta un video",
       "save_dialog_default_name": "shader.mp4",
       "save_dialog_filter": "Video (*.mp4)",
       "ffmpeg_missing": "ffmpeg non trovato ({path}).\n\nVedi COMPILATION.md, sezione «Esportazione video»: il binario previsto è packaging/bin/ffmpeg.exe.",
       "export_failed": "Esportazione non riuscita:\n{error}",
-      "export_success": "Video esportato con successo ({frames} fotogrammi, {width}×{height} @ {fps} fps):\n{path}"
+      "export_success": "Video esportato con successo ({frames} fotogrammi, {width}×{height} @ {fps} fps):\n{path}",
+      "resolution_too_large": "Risoluzione {width}×{height} troppo alta: questa scheda grafica supporta al massimo {max}px per lato. Scegli una risoluzione più piccola.",
+      "resize_failed": "Impossibile preparare l'esportazione a questa risoluzione: {error}",
+      "restore_resolution_failed": "Attenzione: impossibile ripristinare la risoluzione di anteprima precedente dopo l'esportazione: {error}"
     },
     "export_progress": {
       "title": "Esporta un video (MP4)",
@@ -209,7 +261,9 @@
       "shadertoy_api_key": "Chiave API Shadertoy",
       "shadertoy_api_key_placeholder": "(vuoto = richiesta di nuovo al prossimo import)",
       "language": "Lingua",
-      "language_restart_notice": "La modifica della lingua avrà effetto al prossimo avvio dell'applicazione."
+      "language_restart_notice": "La modifica della lingua avrà effetto al prossimo avvio dell'applicazione.",
+      "autosave_enabled": "Salvataggio automatico",
+      "autosave_interval_minutes": "Intervallo di salvataggio"
     },
     "shortcuts": {
       "title": "Scorciatoie da tastiera",
@@ -227,7 +281,10 @@
       "face_row": "Faccia {face}",
       "choose_face_image": "Scegli un'immagine per la faccia",
       "missing_faces_title": "Cubemap",
-      "missing_faces_body": "Tutte e 6 le facce devono essere compilate."
+      "missing_faces_body": "Tutte e 6 le facce devono essere compilate.",
+      "file_not_found_body": "File non trovato per la/le faccia/facce: {faces}.",
+      "face_not_square": "Faccia {face}: {width}x{height} — una faccia della cubemap deve essere quadrata.",
+      "face_size_mismatch": "Faccia {face}: {size}x{size}, atteso {expected}x{expected} (come le altre facce già scelte)."
     },
     "slider_bounds": {
       "title": "Limiti dello slider",
@@ -235,6 +292,12 @@
       "max": "Max",
       "decimals": "Decimali",
       "menu_edit": "Modifica min / max…"
+    },
+    "keyframe_curve": {
+      "title": "Curva di interpolazione",
+      "linear": "Lineare",
+      "ease": "Morbida (ease)",
+      "step": "Gradini"
     },
     "color_picker": {
       "title": "Scegli un colore"
@@ -254,7 +317,23 @@
     },
     "ichannel_error": {
       "title": "iChannel"
-    }
+    },
+    "ichannel_drop_rejected": {
+      "title": "File non supportato",
+      "body": "Questo file ({extension}) non è un formato immagine, video o audio supportato per un iChannel.",
+      "no_extension": "senza estensione"
+    },
+    "crash_recovery": {
+      "title": "Ripristinare il lavoro non salvato?",
+      "body": "Il software non si è chiuso normalmente. È disponibile un salvataggio automatico del {timestamp}: ripristinarlo?",
+      "restore_button": "Ripristina",
+      "discard_button": "Ignora"
+    },
+    "gpu_error": {
+      "title": "Scheda grafica non supportata",
+      "body": "Impossibile avviare: nessuna scheda grafica compatibile trovata su questo computer.\n\nProva ad aggiornare i driver della scheda grafica, poi riavvia il programma.\n\nDettaglio tecnico: {error}"
+    },
+    "viewport_resize_error": "Anteprima non ridimensionata (memoria grafica insufficiente): {error}"
   },
   "sliders_panel": {
     "filter_placeholder": "Filtra…",
@@ -278,6 +357,7 @@
     ],
     "add_keyframe_menu": "Aggiungi un fotogramma chiave (t={time}s)",
     "clear_keyframes_menu": "Cancella fotogrammi chiave",
+    "edit_curve_menu": "Curva di interpolazione…",
     "add_keyframe_tooltip": "Aggiungi un fotogramma chiave al tempo attuale (t={time}s)",
     "keyframe_button_tooltip": "Clic: aggiungi/aggiorna a t={time}s — clic destro: altre opzioni",
     "reset_category": "↺ Reimposta categoria",
@@ -290,7 +370,7 @@
   "ichannel_panel": {
     "video_filter": "Video (*.mp4 *.mov *.m4v *.avi *.mkv *.webm)",
     "audio_filter": "Audio (*.mp3 *.wav *.ogg *.flac)",
-    "image_filter": "Immagini (*.png *.jpg *.jpeg *.bmp)",
+    "image_filter": "Immagini (*.png *.jpg *.jpeg *.bmp *.gif *.webp)",
     "source_empty": "Vuoto",
     "source_image": "Immagine (file)",
     "source_video": "Video (file)…",
@@ -305,6 +385,12 @@
     "change_cubemap": "Modifica facce…",
     "change_video": "Cambia video…",
     "change_audio": "Cambia audio…",
+    "volume_tooltip": "Volume dell'ingresso audio (indipendente dal volume di sistema)",
+    "mute_tooltip": "Muto",
+    "procedural_scale_label": "Dimensione del motivo",
+    "procedural_scale_tooltip": "Dimensione del motivo (numero di celle / risoluzione della griglia di rumore)",
+    "procedural_seed_label": "Seme",
+    "procedural_seed_tooltip": "Seme casuale (0 = valore predefinito del preset)",
     "change_webcam": "Cambia webcam…",
     "choose_video": "Scegli un video per iChannel{index}",
     "choose_audio": "Scegli un file audio per iChannel{index}",
@@ -312,16 +398,32 @@
     "procedural_suffix": "{label} (procedurale)",
     "thumb_empty": "vuoto",
     "thumb_cube": "CUBO",
-    "default_webcam_tooltip": "webcam predefinita"
+    "default_webcam_tooltip": "webcam predefinita",
+    "source_lost_tooltip": "Sorgente persa: {message}"
   },
   "footer": {
     "fps": "FPS: {fps}",
+    "resolution": "{width}×{height} ({percent}%)",
+    "resolution_tooltip": "Risoluzione di rendering effettivamente usata dall'anteprima, indipendente dalla dimensione della finestra.",
+    "render_scale_tooltip": "Scala di rendering dell'anteprima (riducila per restare fluidi con uno shader pesante)",
     "ready": "Pronto",
     "compile_ok": "Compilato correttamente",
     "compile_error": "Errore: {message}",
     "frame_time_tooltip": "Tempo di rendering per fotogramma (barra rossa = più lento di ~30 FPS)",
     "size_tooltip": "Dimensione grezza e dimensione gzip stimata (un'approssimazione della dimensione effettivamente trasferita/memorizzata) prima/dopo il golf. L'indicatore (< 2 KB / < 4 KB / < 8 KB) corrisponde alle soglie tradizionali delle compo demoscene 4k/8k, sulla dimensione grezza golfata — non un confronto online con un punteggio esterno.",
     "size_format": "{before} -> {after} byte (-{percent}%) | gzip {before_gz} -> {after_gz}{tier_suffix}",
-    "size_tier": "< {kb} KB"
+    "size_tier": "< {kb} KB",
+    "size_tier_approaching": "vicino a {kb} KB",
+    "dialect_shadertoy": "Shadertoy",
+    "dialect_glsl": "GLSL",
+    "dialect_wgsl": "WGSL",
+    "dialect_tooltip": "Modalità {mode}, rilevata tramite {signal}",
+    "dialect_signal_mainimage": "presenza di mainImage()",
+    "dialect_signal_voidmain": "presenza di void main()",
+    "dialect_signal_version": "presenza di #version",
+    "dialect_signal_fragcolor": "presenza di gl_FragColor",
+    "dialect_signal_wgslentrypoint": "presenza di un punto di ingresso @fragment fn WGSL",
+    "dialect_signal_wgsluniformorgeneric": "presenza di var<uniform> o di un tipo generico WGSL",
+    "dialect_signal_none": "modalità precedente mantenuta (nessun segnale rilevato)"
   }
 }

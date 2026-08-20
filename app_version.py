@@ -9,4 +9,4 @@ de version apparaît. (Historique : `Cargo.toml`/`pyproject.toml` étaient
 restés bloqués à `0.1.0` jusqu'à la synchronisation faite en 0.1.6 — vérifier
 les quatre à chaque bump plutôt que de supposer qu'ils suivent déjà.)
 """
-APP_VERSION = "0.1.13"
+APP_VERSION = "0.1.18"

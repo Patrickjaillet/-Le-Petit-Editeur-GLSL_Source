@@ -38,6 +38,7 @@ class MonacoEditor(QWebEngineView):
 
         self._ready = False
         self._pending_value: str | None = None
+        self._pending_language: str | None = None
 
         self.loadFinished.connect(self._on_load_finished)
 
@@ -61,6 +62,9 @@ class MonacoEditor(QWebEngineView):
                 if self._pending_value is not None:
                     text, self._pending_value = self._pending_value, None
                     self.set_value(text)
+                if self._pending_language is not None:
+                    language_id, self._pending_language = self._pending_language, None
+                    self.set_language(language_id)
                 self.editorReady.emit()
             else:
                 QTimer.singleShot(READY_POLL_MS, self._poll_ready)
@@ -91,6 +95,15 @@ class MonacoEditor(QWebEngineView):
         if not self._ready:
             return
         self.page().runJavaScript("getEditorValue();", callback)
+
+    def set_language(self, language_id: str) -> None:
+        """`language_id` is `"glsl"` or `"wgsl"` (both registered in
+        `index.html`). RM10.md section 2, item 1."""
+        if not self._ready:
+            self._pending_language = language_id
+            return
+        js = f"setEditorLanguage({json.dumps(language_id)});"
+        self.page().runJavaScript(js)
 
     def set_error_marker(self, line: int | None, message: str | None) -> None:
         js = f"setErrorMarker({json.dumps(line)}, {json.dumps(message)});"

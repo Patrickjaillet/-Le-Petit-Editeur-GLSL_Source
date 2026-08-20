@@ -1,0 +1,364 @@
+/* Glassmorphism theme layered on top of the Fusion dark QPalette set by
+   ui/theme.py -- translucent panels, soft borders, rounded corners, and an
+   accent-colored slider fill standing in for a blurred backdrop (see
+   ui/theme.py's module docstring for why no real OS-level blur is used). */
+
+QMainWindow, QDialog {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #1b1e26, stop:1 #14161c);
+}
+
+QToolTip {
+    background-color: rgba(32, 35, 44, 235);
+    color: #e7eaf2;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+
+/* ---- menu bar / menus ------------------------------------------------- */
+
+QMenuBar {
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 2px 4px;
+}
+QMenuBar::item {
+    background: transparent;
+    padding: 5px 10px;
+    border-radius: 6px;
+}
+QMenuBar::item:selected, QMenuBar::item:pressed {
+    background: rgba(255, 255, 255, 0.10);
+}
+
+QMenu {
+    background-color: rgba(28, 31, 39, 235);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 6px;
+}
+QMenu::item {
+    padding: 6px 26px 6px 14px;
+    border-radius: 6px;
+    margin: 1px;
+}
+QMenu::item:selected {
+    background: rgba(90, 169, 255, 0.32);
+    color: #ffffff;
+}
+QMenu::item:disabled {
+    color: rgba(230, 233, 240, 0.35);
+}
+QMenu::separator {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.10);
+    margin: 6px 8px;
+}
+QMenu::icon {
+    padding-left: 4px;
+}
+
+/* ---- toolbars / status bar --------------------------------------------- */
+
+QToolBar {
+    background: rgba(255, 255, 255, 0.03);
+    border: none;
+    spacing: 4px;
+    padding: 4px;
+}
+QStatusBar {
+    background: rgba(255, 255, 255, 0.03);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ---- buttons ------------------------------------------------------------ */
+
+QPushButton, QToolButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(255, 255, 255, 0.12), stop:1 rgba(255, 255, 255, 0.04));
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 8px;
+    padding: 6px 14px;
+    color: #eef0f6;
+}
+QPushButton:hover, QToolButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(255, 255, 255, 0.18), stop:1 rgba(255, 255, 255, 0.07));
+    border: 1px solid rgba(90, 169, 255, 0.55);
+}
+QPushButton:pressed, QToolButton:pressed {
+    background: rgba(90, 169, 255, 0.28);
+    border: 1px solid rgba(90, 169, 255, 0.70);
+}
+QPushButton:disabled, QToolButton:disabled {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: rgba(230, 233, 240, 0.35);
+}
+QPushButton:default {
+    border: 1px solid rgba(90, 169, 255, 0.75);
+}
+QToolButton:checked {
+    background: rgba(90, 169, 255, 0.30);
+    border: 1px solid rgba(90, 169, 255, 0.70);
+}
+
+/* ---- containers: group boxes, tabs, scroll areas ------------------------ */
+
+QGroupBox {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 10px;
+    margin-top: 16px;
+    padding-top: 10px;
+    font-weight: 600;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    top: 3px;
+    padding: 0 6px;
+    color: #cfe0ff;
+}
+
+QTabWidget::pane {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 10px;
+    top: -1px;
+}
+QTabBar::tab {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: none;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    padding: 6px 14px;
+    margin-right: 2px;
+    color: rgba(230, 233, 240, 0.75);
+}
+QTabBar::tab:selected {
+    background: rgba(90, 169, 255, 0.22);
+    border: 1px solid rgba(90, 169, 255, 0.45);
+    border-bottom: none;
+    color: #ffffff;
+}
+QTabBar::tab:hover:!selected {
+    background: rgba(255, 255, 255, 0.07);
+}
+
+QScrollArea {
+    background: transparent;
+    border: none;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 12px;
+    margin: 2px;
+}
+QScrollBar::handle:vertical {
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 5px;
+    min-height: 24px;
+}
+QScrollBar::handle:vertical:hover {
+    background: rgba(255, 255, 255, 0.28);
+}
+QScrollBar:horizontal {
+    background: transparent;
+    height: 12px;
+    margin: 2px;
+}
+QScrollBar::handle:horizontal {
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 5px;
+    min-width: 24px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: rgba(255, 255, 255, 0.28);
+}
+QScrollBar::add-line, QScrollBar::sub-line {
+    width: 0; height: 0; border: none; background: none;
+}
+QScrollBar::add-page, QScrollBar::sub-page {
+    background: none;
+}
+
+QSplitter::handle {
+    background: rgba(255, 255, 255, 0.06);
+}
+QSplitter::handle:hover {
+    background: rgba(90, 169, 255, 0.35);
+}
+
+/* ---- inputs --------------------------------------------------------- */
+
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 7px;
+    padding: 4px 8px;
+    selection-background-color: rgba(90, 169, 255, 0.55);
+}
+QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover {
+    border: 1px solid rgba(255, 255, 255, 0.28);
+}
+QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
+    border: 1px solid #5aa9ff;
+}
+QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled {
+    background: rgba(255, 255, 255, 0.02);
+    color: rgba(230, 233, 240, 0.35);
+}
+QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+QComboBox QAbstractItemView {
+    background-color: rgba(28, 31, 39, 240);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    selection-background-color: rgba(90, 169, 255, 0.35);
+    outline: none;
+}
+QSpinBox::up-button, QSpinBox::down-button,
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+    background: rgba(255, 255, 255, 0.06);
+    border: none;
+    width: 16px;
+}
+QSpinBox::up-button:hover, QSpinBox::down-button:hover,
+QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
+    background: rgba(90, 169, 255, 0.35);
+}
+
+QCheckBox, QRadioButton {
+    spacing: 8px;
+}
+QCheckBox::indicator, QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.05);
+}
+QCheckBox::indicator {
+    border-radius: 4px;
+}
+QRadioButton::indicator {
+    border-radius: 8px;
+}
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {
+    border: 1px solid rgba(90, 169, 255, 0.65);
+}
+QCheckBox::indicator:checked, QRadioButton::indicator:checked {
+    background: qradialgradient(cx:0.5, cy:0.5, radius:0.9, fx:0.5, fy:0.5,
+        stop:0 #cfe4ff, stop:1 #5aa9ff);
+    border: 1px solid #5aa9ff;
+}
+QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+QProgressBar {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 7px;
+    text-align: center;
+    color: #eef0f6;
+}
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #5aa9ff, stop:1 #9b7bff);
+    border-radius: 6px;
+}
+
+/* ---- sliders ---------------------------------------------------------- */
+
+QSlider {
+    min-height: 24px;
+}
+QSlider::groove:horizontal {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.10);
+    border-radius: 3px;
+}
+QSlider::sub-page:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #5aa9ff, stop:1 #9b7bff);
+    border-radius: 3px;
+}
+QSlider::add-page:horizontal {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+}
+/* Negative vertical margin overhangs the handle past the thin groove so it
+   reads as a full round glass "puck" straddling the track, not a circle
+   clipped down to the groove's own 6px height. */
+QSlider::handle:horizontal {
+    width: 16px;
+    height: 16px;
+    margin: -6px 0;
+    border-radius: 8px;
+    background: qradialgradient(cx:0.35, cy:0.3, radius:1.0, fx:0.35, fy:0.3,
+        stop:0 #ffffff, stop:0.4 #e2ecff, stop:1 #5aa9ff);
+    border: 1px solid rgba(255, 255, 255, 0.65);
+}
+QSlider::handle:horizontal:hover {
+    width: 18px;
+    height: 18px;
+    margin: -7px -1px;
+    border-radius: 9px;
+    border: 1px solid #ffffff;
+    background: qradialgradient(cx:0.35, cy:0.3, radius:1.0, fx:0.35, fy:0.3,
+        stop:0 #ffffff, stop:0.4 #eef4ff, stop:1 #79bbff);
+}
+QSlider::handle:horizontal:pressed {
+    background: #4a90e2;
+    border: 1px solid #ffffff;
+}
+QSlider::handle:horizontal:disabled {
+    background: rgba(255, 255, 255, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+}
+QSlider::groove:horizontal:disabled, QSlider::sub-page:horizontal:disabled {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+QSlider::groove:vertical {
+    width: 6px;
+    background: rgba(255, 255, 255, 0.10);
+    border-radius: 3px;
+}
+QSlider::sub-page:vertical {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+}
+QSlider::add-page:vertical {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #9b7bff, stop:1 #5aa9ff);
+    border-radius: 3px;
+}
+QSlider::handle:vertical {
+    width: 16px;
+    height: 16px;
+    margin: 0 -6px;
+    border-radius: 8px;
+    background: qradialgradient(cx:0.35, cy:0.3, radius:1.0, fx:0.35, fy:0.3,
+        stop:0 #ffffff, stop:0.4 #e2ecff, stop:1 #5aa9ff);
+    border: 1px solid rgba(255, 255, 255, 0.65);
+}
+QSlider::handle:vertical:hover {
+    border: 1px solid #ffffff;
+}
+
+/* ---- misc: headers, panels named by object name ------------------------ */
+
+QHeaderView::section {
+    background: rgba(255, 255, 255, 0.05);
+    border: none;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 4px 8px;
+}

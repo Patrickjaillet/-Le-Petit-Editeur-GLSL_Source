@@ -34,7 +34,7 @@ against known audio-reactive shaders rather than guaranteed bit-exact.
 from __future__ import annotations
 
 import numpy as np
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, QUrl, Signal
 from PySide6.QtMultimedia import (
     QAudioBuffer,
     QAudioBufferOutput,
@@ -73,7 +73,14 @@ class AudioChannelSource(QObject):
     is meant to be called once per UI tick (from `MainWindow`, driven off
     `Viewport.timeUpdated` -- the same ~60fps cadence every other dynamic
     iChannel source ticks on) to FFT/downsample whatever's accumulated
-    since the last call and hand back the two texture rows to upload."""
+    since the last call and hand back the two texture rows to upload.
+
+    `sourceLost(str)` mirrors `VideoChannelSource.sourceLost` (RM10.md
+    section 1, item 6): fires via `QMediaPlayer.errorOccurred` if playback
+    fails mid-use (e.g. the file's drive was disconnected), never on our
+    own `stop()`."""
+
+    sourceLost = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -84,24 +91,58 @@ class AudioChannelSource(QObject):
         # Precomputed once: same window every call, only the samples
         # inside it change.
         self._hann = np.hanning(_FFT_SIZE).astype(np.float32)
+        # RM10.md section 5: independent of the system output volume (see
+        # `start`'s docstring) -- kept here, not just on `_audio_output`
+        # directly, because `start()` tears down and rebuilds a brand new
+        # `QAudioOutput` every time (a different file, or the same file
+        # re-picked), which would otherwise silently reset volume/mute
+        # back to 100%/unmuted on every reassignment.
+        self._volume = 1.0
+        self._muted = False
+
+    # ---- volume (independent of the system output volume) --------------
+
+    def set_volume(self, volume: float) -> None:
+        self._volume = max(0.0, min(1.0, volume))
+        if self._audio_output is not None:
+            self._audio_output.setVolume(self._volume)
+
+    def set_muted(self, muted: bool) -> None:
+        self._muted = muted
+        if self._audio_output is not None:
+            self._audio_output.setMuted(muted)
 
     # ---- playback -----------------------------------------------------
 
     def start(self, path: str) -> None:
-        """Plays `path` on loop, audibly (system output volume) --
-        deliberately the opposite choice from `VideoChannelSource.start_file`,
-        which stays silent: hearing the audio while it drives the shader is
-        the entire point of an audio-reactive iChannel."""
+        """Plays `path` on loop, audibly (at `self._volume`, independent of
+        the system output volume) -- deliberately the opposite choice from
+        `VideoChannelSource.start_file`, which stays silent: hearing the
+        audio while it drives the shader is the entire point of an
+        audio-reactive iChannel."""
         self.stop()
         self._ring[:] = 0.0
         self._player = QMediaPlayer(self)
         self._audio_output = QAudioOutput(self)
+        self._audio_output.setVolume(self._volume)
+        self._audio_output.setMuted(self._muted)
         self._player.setAudioOutput(self._audio_output)
         self._buffer_output = QAudioBufferOutput(self)
         self._buffer_output.audioBufferReceived.connect(self._on_audio_buffer)
         self._player.setAudioBufferOutput(self._buffer_output)
         self._player.setLoops(QMediaPlayer.Infinite)
-        self._player.setSource(path)
+        self._player.errorOccurred.connect(lambda _error, message: self.sourceLost.emit(message))
+        # `setSource` takes a `QUrl`, and PySide6 will silently coerce a
+        # bare Python `str` into one via `QUrl(str)` -- which parses it as
+        # a generic URL, not a local path. On Windows that's actively
+        # wrong: `QUrl("C:\\...\\track.mp3")` (or even the forward-slash
+        # form) reads the drive letter "C" as the URL *scheme*, produces
+        # an `isLocalFile() == False` URL, and `QMediaPlayer` then fails
+        # to open it with a bare "Could not open file" -- silently, since
+        # nothing here ever surfaced that as anything other than "the
+        # audio channel just stays silent". `QUrl.fromLocalFile` is the
+        # one that actually means "this is a path on disk".
+        self._player.setSource(QUrl.fromLocalFile(path))
         self._player.play()
 
     def stop(self) -> None:

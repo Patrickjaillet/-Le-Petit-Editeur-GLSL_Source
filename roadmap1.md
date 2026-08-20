@@ -220,13 +220,46 @@ dans le footer.
 ## ✅ Vérification
 
 
-- [ ] Rendu pixel-identique du chemin Shadertoy existant avant/après ce chantier (aucune régression
+- [x] Rendu pixel-identique du chemin Shadertoy existant avant/après ce chantier (aucune régression
   sur tout ce que couvre déjà `ROADMAP.md` — multi-passes, sliders, import Shadertoy, etc.).
-- [ ] Suite de tests dédiée (nouveau `test_dialect_detection.py` côté Python si la détection est
+  *Vérifié pour de vrai dans ce sandbox (toolchain Rust 1.75 + `mesa-vulkan-drivers`/llvmpipe
+  installés pour avoir un adaptateur wgpu utilisable) : `cargo build` + `python -m maturin` pour
+  obtenir le vrai module natif, `default.frag` (le shader Shadertoy connu du dépôt, celui de
+  `pixel_compare.py`) rendu via `Engine.compile_pass`/`render()` puis comparé octet par octet à
+  `docs/render_default_frag_original.png` — **0 octet différent sur 1 440 000**. `pixel_compare.py`
+  lui-même (comparaison original vs golfé) passe aussi (`Pixel-identique : True`). Confirme que
+  `build_fragment_source`/le chemin `ShaderDialect::Shadertoy` n'a bien pas été touché par ce
+  chantier.*
+- [x] Suite de tests dédiée (nouveau `test_dialect_detection.py` côté Python si la détection est
   aussi exposée/testée depuis ce côté, en plus des tests Rust) : import d'un shader Shadertoy connu
   → mode Shadertoy affiché ; collage d'un shader GLSL "manuel" classique (`void main(){
   gl_FragColor = ...; }`) → mode GLSL affiché et shader qui compile réellement.
-- [ ] Vérifier le comportement en cours de frappe : partir d'un shader Shadertoy valide, retirer
+  *Nouveau fichier `test_dialect_detection.py` à la racine, ajouté à `.github/workflows/ci.yml`.
+  Utilise le vrai module natif (pas de mock) : `default.frag` → `DIALECT_SHADERTOY` (signal
+  `mainimage`) ; un `void main(){ gl_FragColor = ...; }` → `DIALECT_GLSL` (signal `voidmain`) **et**
+  compilé + rendu réellement via `Engine.compile_pass`/`render()`, pixel de sortie vérifié
+  (rouge opaque `(255,0,0,255)` exact, pas seulement "ça ne lève pas"). Passe dans ce sandbox
+  (`ALL OK`) une fois le module natif construit et un adaptateur wgpu logiciel disponible ; se SKIP
+  proprement (exit 0) sinon, même principe que `test_literals_native.py`.*
+  *Bug réel trouvé et corrigé au passage : contrairement à ce qu'affirmait la case cochée de la
+  section footer plus haut dans ce fichier, les clés i18n `footer.dialect_*` n'étaient **pas**
+  présentes dans les 12 `lngs/*.json` — `test_i18n_completeness.py` échouait donc réellement
+  (`tr("footer.dialect_tooltip")` introuvable), ce qui est en soi une régression au sens de la case
+  précédente de cette section. Les 8 clés (`dialect_shadertoy`, `dialect_glsl`, `dialect_tooltip`,
+  les 5 `dialect_signal_*`) ont été ajoutées, traduites, dans les 12 fichiers ; `test_i18n.py` et
+  `test_i18n_completeness.py` passent de nouveau.*
+- [x] Vérifier le comportement en cours de frappe : partir d'un shader Shadertoy valide, retirer
   `mainImage` progressivement en tapant un `void main()` à la place, confirmer que le mode bascule
   au bon moment (après le debounce, pas avant) sans jamais planter le pipeline de compilation
   live pendant la transition.
+  *Couvert par le 3e scénario de `test_dialect_detection.py`, qui rejoue l'algorithme exact de
+  `main_window.py::_update_dialect_indicator` (dialecte précédent repassé au détecteur à chaque
+  étape, comme le fait le vrai debounce) : source Shadertoy valide → retrait progressif de
+  `mainImage` jusqu'à `void main(out vec4 fragColor, in vec2 fragCoord)` (ni `mainImage` ni
+  `void main()` sans paramètre : aucun signal fort, le mode Shadertoy précédent est conservé à
+  chaque étape intermédiaire, jamais de bascule prématurée) → `void main()` retapé sans paramètre :
+  bascule vers GLSL seulement à cette dernière étape. Absence de plantage confirmée par lecture de
+  `main_window.py` : `_update_dialect_indicator` n'est câblé que sur `_recompile_current_tab`
+  (déclencheur debouncé) et `_on_pass_tab_changed`, jamais sur `_on_text_changed` (qui ne fait que
+  relancer le timer) ; `_compile_one_pass` capture toute erreur de compilation dans un
+  `try/except RuntimeError` qui met à jour le footer sans jamais crasher le pipeline live.*

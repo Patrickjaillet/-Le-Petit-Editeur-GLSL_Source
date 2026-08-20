@@ -15,19 +15,38 @@ from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QPushButton,
     QRadioButton,
     QSpinBox,
     QVBoxLayout,
 )
 
+import workspace_dirs
 from i18n import tr
+from video_export import (
+    AUDIO_START_OFFSET_MAX_S,
+    AUDIO_START_OFFSET_MIN_S,
+    AUDIO_VOLUME_MAX_DB,
+    AUDIO_VOLUME_MIN_DB,
+    AUDIO_BITRATE_PRESETS_KBPS,
+    DEFAULT_AUDIO_BITRATE_KBPS,
+)
+
+# Formats `QMediaPlayer`/ffmpeg both handle without extra codecs -- same
+# list `audio_source.AUDIO_EXTENSIONS` uses for the live audio-reactive
+# iChannel, reused here since it's the same "what can this app decode"
+# question.
+AUDIO_EXTENSIONS = (".mp3", ".wav", ".ogg", ".flac")
 
 # --- Compression -------------------------------------------------------
 # Exposed as an ffmpeg/libx264 CRF (0 = quasi sans perte, ~51 = très
@@ -81,6 +100,11 @@ class ExportVideoSettings:
     width: int
     height: int
     crf: int
+    audio_path: str | None = None
+    audio_volume_db: float = 0.0
+    audio_start_offset: float = 0.0
+    audio_loop: bool = True
+    audio_bitrate_kbps: int = DEFAULT_AUDIO_BITRATE_KBPS
 
     @property
     def duration_seconds(self) -> float:
@@ -236,6 +260,55 @@ class ExportVideoDialog(QDialog):
         compression_layout.addLayout(advanced_row)
         layout.addWidget(compression_group)
 
+        # --- Musique -----------------------------------------------------
+        audio_group = QGroupBox(tr("dialogs.export_video.audio_group"))
+        audio_layout = QVBoxLayout(audio_group)
+        self._audio_enable_box = QCheckBox(tr("dialogs.export_video.audio_enable"))
+        audio_layout.addWidget(self._audio_enable_box)
+        audio_row = QHBoxLayout()
+        self._audio_path_edit = QLineEdit()
+        self._audio_path_edit.setReadOnly(True)
+        self._audio_path_edit.setPlaceholderText(tr("dialogs.export_video.audio_placeholder"))
+        self._audio_path_edit.setEnabled(False)
+        self._audio_browse_button = QPushButton(tr("dialogs.export_video.audio_browse"))
+        self._audio_browse_button.setEnabled(False)
+        audio_row.addWidget(self._audio_path_edit)
+        audio_row.addWidget(self._audio_browse_button)
+        audio_layout.addLayout(audio_row)
+
+        audio_options_form = QFormLayout()
+        self._audio_volume_spin = QDoubleSpinBox()
+        self._audio_volume_spin.setRange(AUDIO_VOLUME_MIN_DB, AUDIO_VOLUME_MAX_DB)
+        self._audio_volume_spin.setSuffix(" dB")
+        self._audio_volume_spin.setValue(0.0)
+        self._audio_volume_spin.setEnabled(False)
+        audio_options_form.addRow(tr("dialogs.export_video.audio_volume"), self._audio_volume_spin)
+
+        self._audio_start_spin = QDoubleSpinBox()
+        self._audio_start_spin.setRange(AUDIO_START_OFFSET_MIN_S, AUDIO_START_OFFSET_MAX_S)
+        self._audio_start_spin.setDecimals(2)
+        self._audio_start_spin.setSuffix(" s")
+        self._audio_start_spin.setValue(0.0)
+        self._audio_start_spin.setEnabled(False)
+        audio_options_form.addRow(tr("dialogs.export_video.audio_start_offset"), self._audio_start_spin)
+
+        self._audio_bitrate_combo = QComboBox()
+        for kbps in AUDIO_BITRATE_PRESETS_KBPS:
+            self._audio_bitrate_combo.addItem(f"{kbps} kbps", kbps)
+        self._audio_bitrate_combo.setCurrentIndex(AUDIO_BITRATE_PRESETS_KBPS.index(DEFAULT_AUDIO_BITRATE_KBPS))
+        self._audio_bitrate_combo.setEnabled(False)
+        audio_options_form.addRow(tr("dialogs.export_video.audio_bitrate"), self._audio_bitrate_combo)
+        audio_layout.addLayout(audio_options_form)
+
+        self._audio_loop_box = QCheckBox(tr("dialogs.export_video.audio_loop"))
+        self._audio_loop_box.setChecked(True)
+        self._audio_loop_box.setEnabled(False)
+        audio_layout.addWidget(self._audio_loop_box)
+
+        layout.addWidget(audio_group)
+
+        self._audio_path: str | None = None
+
         # --- Estimation de taille (en direct) -------------------------------
         self._estimate_label = QLabel()
         self._estimate_label.setAlignment(Qt.AlignRight)
@@ -259,6 +332,8 @@ class ExportVideoDialog(QDialog):
         self._crf_spin.valueChanged.connect(lambda _: self._update_estimate())
         self._width_box.valueChanged.connect(lambda _: self._update_estimate())
         self._height_box.valueChanged.connect(lambda _: self._update_estimate())
+        self._audio_enable_box.toggled.connect(self._on_audio_enable_toggled)
+        self._audio_browse_button.clicked.connect(self._on_audio_browse_clicked)
 
         self._load_initial_values(current_width, current_height)
         self._update_estimate()
@@ -291,6 +366,17 @@ class ExportVideoDialog(QDialog):
             self._crf_radios[preset_name].setChecked(True)
         self._crf_spin.setEnabled(preset_name is None)
         self._crf_spin.setValue(crf)
+
+        audio_path = s.value("videoExportAudioPath", "", type=str)
+        audio_enabled = s.value("videoExportAudioEnabled", False, type=bool) and bool(audio_path)
+        self._set_audio_path(audio_path or None)
+        self._audio_volume_spin.setValue(s.value("videoExportAudioVolumeDb", 0.0, type=float))
+        self._audio_start_spin.setValue(s.value("videoExportAudioStartOffset", 0.0, type=float))
+        self._audio_loop_box.setChecked(s.value("videoExportAudioLoop", True, type=bool))
+        bitrate = s.value("videoExportAudioBitrateKbps", DEFAULT_AUDIO_BITRATE_KBPS, type=int)
+        if bitrate in AUDIO_BITRATE_PRESETS_KBPS:
+            self._audio_bitrate_combo.setCurrentIndex(AUDIO_BITRATE_PRESETS_KBPS.index(bitrate))
+        self._audio_enable_box.setChecked(audio_enabled)
 
     # ---- duration sync: seconds <-> frames, anchored on the current fps ----
     def _current_fps(self) -> float:
@@ -359,18 +445,54 @@ class ExportVideoDialog(QDialog):
             self._crf_radios[closest_name].setChecked(True)
         self._update_estimate()
 
+    # ---- musique ---------------------------------------------------------
+    def _set_audio_path(self, path: str | None) -> None:
+        self._audio_path = path
+        self._audio_path_edit.setText(path or "")
+
+    def _on_audio_enable_toggled(self, checked: bool) -> None:
+        self._audio_path_edit.setEnabled(checked)
+        self._audio_browse_button.setEnabled(checked)
+        self._audio_volume_spin.setEnabled(checked)
+        self._audio_start_spin.setEnabled(checked)
+        self._audio_bitrate_combo.setEnabled(checked)
+        self._audio_loop_box.setEnabled(checked)
+        if checked and not self._audio_path:
+            self._on_audio_browse_clicked()
+            if not self._audio_path:
+                # No file actually picked (dialog cancelled) -- nothing to
+                # enable a music track with, so don't leave the checkbox
+                # checked over an empty path.
+                self._audio_enable_box.setChecked(False)
+
+    def _on_audio_browse_clicked(self) -> None:
+        extensions = " ".join(f"*{ext}" for ext in AUDIO_EXTENSIONS)
+        path, _ = QFileDialog.getOpenFileName(
+            self, tr("dialogs.export_video.audio_browse"),
+            self._audio_path or str(workspace_dirs.dir_for("ichannel_audio")),
+            tr("dialogs.export_video.audio_file_filter", extensions=extensions),
+        )
+        if path:
+            self._set_audio_path(path)
+
     # ---- live file-size estimate --------------------------------------------
     def _update_estimate(self) -> None:
         size = estimated_file_size_bytes(self._current_settings(), _load_calibration(self._qsettings))
         self._estimate_label.setText(tr("dialogs.export_video.estimated_size", size=_format_bytes(size)))
 
     def _current_settings(self) -> ExportVideoSettings:
+        audio_enabled = self._audio_enable_box.isChecked()
         return ExportVideoSettings(
             frames=self._frames_box.value(),
             fps=self._current_fps(),
             width=self._width_box.value(),
             height=self._height_box.value(),
             crf=self._crf_spin.value(),
+            audio_path=self._audio_path if audio_enabled else None,
+            audio_volume_db=self._audio_volume_spin.value() if audio_enabled else 0.0,
+            audio_start_offset=self._audio_start_spin.value() if audio_enabled else 0.0,
+            audio_loop=self._audio_loop_box.isChecked() if audio_enabled else True,
+            audio_bitrate_kbps=self._audio_bitrate_combo.currentData() if audio_enabled else DEFAULT_AUDIO_BITRATE_KBPS,
         )
 
     # ---- result --------------------------------------------------------------
@@ -382,4 +504,10 @@ class ExportVideoDialog(QDialog):
         s.setValue("videoExportWidth", result.width)
         s.setValue("videoExportHeight", result.height)
         s.setValue("videoExportCrf", result.crf)
+        s.setValue("videoExportAudioPath", self._audio_path or "")
+        s.setValue("videoExportAudioEnabled", self._audio_enable_box.isChecked())
+        s.setValue("videoExportAudioVolumeDb", self._audio_volume_spin.value())
+        s.setValue("videoExportAudioStartOffset", self._audio_start_spin.value())
+        s.setValue("videoExportAudioLoop", self._audio_loop_box.isChecked())
+        s.setValue("videoExportAudioBitrateKbps", int(self._audio_bitrate_combo.currentData()))
         return result

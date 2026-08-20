@@ -51,6 +51,51 @@
       }
     });
 
+    // RM10.md section 2, item 1: WGSL is syntactically quite different
+    // from GLSL (attributes like `@fragment`/`@group`/`@binding`, `fn`/
+    // `let`/`var` instead of C-style declarations, generic types like
+    // `vec4<f32>`) -- reusing the "glsl" tokenizer's keyword list left
+    // every WGSL keyword highlighted as a plain identifier. A second,
+    // separate Monarch tokenizer registered here, switched to at runtime
+    // via `setEditorLanguage` (see `MainWindow._update_editor_language`,
+    // which detects the dialect the same way the footer indicator does)
+    // rather than trying to make one tokenizer cover both syntaxes.
+    monaco.languages.register({ id: "wgsl" });
+    monaco.languages.setMonarchTokensProvider("wgsl", {
+      keywords: [
+        "fn","let","var","const","struct","return","if","else","for","while","loop","break",
+        "continue","continuing","discard","switch","case","default","fallthrough","true","false",
+        "bool","f16","f32","i32","u32","vec2","vec3","vec4","mat2x2","mat2x3","mat2x4","mat3x2",
+        "mat3x3","mat3x4","mat4x2","mat4x3","mat4x4","array","ptr","atomic",
+        "texture_1d","texture_2d","texture_2d_array","texture_3d","texture_cube","texture_cube_array",
+        "texture_multisampled_2d","texture_storage_1d","texture_storage_2d","texture_storage_2d_array",
+        "texture_storage_3d","texture_depth_2d","texture_depth_2d_array","texture_depth_cube",
+        "texture_depth_cube_array","texture_depth_multisampled_2d","sampler","sampler_comparison",
+        "uniform","storage","private","function","workgroup","read","write","read_write","override"
+      ],
+      // WGSL attributes (`@fragment`, `@group(0)`, ...) are their own
+      // token category rather than folded into `keyword`, so they read
+      // visually distinct from the language's actual keywords -- similar
+      // to how Monaco's own Rust/TypeScript grammars treat decorators.
+      tokenizer: {
+        root: [
+          [/\/\/.*$/, "comment"],
+          [/\/\*/, "comment", "@comment"],
+          [/@[a-zA-Z_]\w*/, "annotation"],
+          [/[a-zA-Z_]\w*/, { cases: { "@keywords": "keyword", "@default": "identifier" } }],
+          [/\d+\.\d+([eE][\-+]?\d+)?[fh]?/, "number.float"],
+          [/\d+[iu]?/, "number"],
+          [/[{}()\[\]]/, "@brackets"],
+          [/[<>=!%&+\-*/|~^]+/, "operator"],
+        ],
+        comment: [
+          [/[^/*]+/, "comment"],
+          [/\*\//, "comment", "@pop"],
+          [/[/*]/, "comment"]
+        ]
+      }
+    });
+
     editor = monaco.editor.create(document.getElementById("editor"), {
       value: "",
       language: "glsl",
@@ -144,6 +189,16 @@
       startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column
     );
     editor.executeEdits("slider", [{ range: range, text: text, forceMoveMarkers: true }]);
+  }
+
+  // RM10.md section 2, item 1: switches the model's Monarch tokenizer
+  // (`"glsl"` or `"wgsl"`, both registered above) without touching the
+  // model's content, undo stack, or cursor position -- `setModelLanguage`
+  // is the standard Monaco API for exactly this, distinct from recreating
+  // the editor/model outright.
+  function setEditorLanguage(languageId) {
+    if (!editor) return;
+    monaco.editor.setModelLanguage(editor.getModel(), languageId);
   }
 
   function setErrorMarker(line, message) {

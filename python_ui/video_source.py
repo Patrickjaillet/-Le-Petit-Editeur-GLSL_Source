@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, QUrl, Signal
 from PySide6.QtGui import QImage
 from PySide6.QtMultimedia import (
     QCamera,
@@ -52,7 +52,22 @@ class VideoChannelSource(QObject):
     frame is decoded; the caller is expected to push it straight into the
     render engine (`Engine.update_ichannel_video_frame`) and do nothing
     slower than that from inside the callback, since it runs on the UI
-    thread at however fast the decoder/camera can go."""
+    thread at however fast the decoder/camera can go.
+
+    `sourceLost(str)` fires when an already-*started* source (webcam or
+    video file) fails or disappears mid-use -- device unplugged, external
+    drive holding the file disconnected, driver-level camera error -- as
+    opposed to `start_file`/`start_webcam` raising synchronously for a
+    source that was never usable in the first place. RM10.md section 1,
+    item 6: this must never crash or silently go blank, and must surface an
+    explicit message in the textures panel (see
+    `MainWindow._on_video_source_lost`) rather than nothing at all. Backed
+    by `QCamera.errorOccurred`/`QMediaPlayer.errorOccurred`, which Qt fires
+    only for genuine error conditions -- never for our own programmatic
+    `stop()` -- so this can't misfire on ordinary reassignment/close.
+    """
+
+    sourceLost = Signal(str)
 
     def __init__(self, on_frame: Callable[[int, int, bytes, float], None], parent=None):
         super().__init__(parent)
@@ -62,6 +77,23 @@ class VideoChannelSource(QObject):
         self._player: QMediaPlayer | None = None
         self._camera: QCamera | None = None
         self._capture_session: QMediaCaptureSession | None = None
+        # RM10.md section 5: the `device_id` this source is currently a
+        # webcam for -- `None` while not a webcam at all (empty/video-file/
+        # never started), `""` for "system default" (see `start_webcam`),
+        # otherwise a specific device id the user explicitly picked. Only
+        # the `""` case reacts to `_on_video_inputs_changed` below; an
+        # explicit pick is left alone even if the system default changes
+        # around it.
+        self._webcam_device_id: str | None = None
+        # A `QMediaDevices` *instance* (not just the static helpers this
+        # module already uses elsewhere) is what actually emits
+        # `videoInputsChanged` -- Qt Multimedia fires it on that instance
+        # whenever the OS-reported video input list (including which one
+        # is flagged default) changes, e.g. a camera is plugged in/out or
+        # the user changes their default camera in Windows Settings while
+        # this source is actively using "system default".
+        self._media_devices = QMediaDevices(self)
+        self._media_devices.videoInputsChanged.connect(self._on_video_inputs_changed)
 
     # ---- video file playback ----------------------------------------------
 
@@ -74,7 +106,13 @@ class VideoChannelSource(QObject):
         self._player = QMediaPlayer(self)
         self._player.setVideoSink(self._sink)
         self._player.setLoops(QMediaPlayer.Infinite)
-        self._player.setSource(path)
+        self._player.errorOccurred.connect(lambda _error, message: self.sourceLost.emit(message))
+        # See `AudioChannelSource.start`'s identical fix for why this must
+        # be `QUrl.fromLocalFile(path)`, not a bare `str`: PySide6 coerces
+        # a plain string into `QUrl(str)`, which on Windows misreads the
+        # drive letter as a URL scheme and produces a non-local-file URL
+        # `QMediaPlayer` silently fails to open.
+        self._player.setSource(QUrl.fromLocalFile(path))
         self._player.play()
 
     # ---- webcam -------------------------------------------------------------
@@ -97,10 +135,36 @@ class VideoChannelSource(QObject):
         if chosen is None or chosen.isNull():
             raise RuntimeError("aucune webcam détectée sur cette machine")
         self._camera = QCamera(chosen, self)
+        self._camera.errorOccurred.connect(lambda _error, message: self.sourceLost.emit(message))
         self._capture_session = QMediaCaptureSession(self)
         self._capture_session.setCamera(self._camera)
         self._capture_session.setVideoSink(self._sink)
         self._camera.start()
+        # Recorded *after* `self.stop()` above (which itself clears this
+        # back to `None`), and after every failure path has already
+        # returned via `raise` -- only a genuinely opened webcam counts.
+        self._webcam_device_id = device_id
+
+    def _on_video_inputs_changed(self) -> None:
+        """RM10.md section 5: reopens the camera when this source is on
+        "system default" (`device_id == ""`) and the OS's default video
+        input changes while in use -- e.g. the user changes their default
+        camera in Windows Settings, or a higher-priority camera is plugged
+        in. The previous default may still be perfectly healthy (no
+        `errorOccurred`, so `sourceLost` never fires on its own for this
+        case), it's simply no longer the one this slot should be watching.
+        A no-op for a source that isn't a webcam, or one pinned to a
+        specific device the user explicitly picked -- and for a
+        default-list change that doesn't actually change which physical
+        device the default resolves to."""
+        if self._webcam_device_id != "":
+            return
+        new_default = QMediaDevices.defaultVideoInput()
+        if new_default is None or new_default.isNull():
+            return
+        if self._camera is not None and self._camera.cameraDevice().id() == new_default.id():
+            return
+        self.start_webcam("")
 
     # ---- shared ---------------------------------------------------------------
 
@@ -122,6 +186,7 @@ class VideoChannelSource(QObject):
         if self._capture_session is not None:
             self._capture_session.deleteLater()
             self._capture_session = None
+        self._webcam_device_id = None
 
     def _on_video_frame(self, frame: QVideoFrame) -> None:
         if not frame.isValid():

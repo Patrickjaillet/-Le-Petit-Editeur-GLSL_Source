@@ -54,6 +54,8 @@ SHORTCUT_SPECS: list[ShortcutSpec] = [
     ShortcutSpec("file.save_as", "actions.file.save_as", ""),
     ShortcutSpec("file.save_project", "actions.file.save_project", "Ctrl+S"),
     ShortcutSpec("file.export_golfed", "actions.file.export_golfed", ""),
+    ShortcutSpec("file.export_hlsl", "actions.file.export_hlsl", ""),
+    ShortcutSpec("file.export_msl", "actions.file.export_msl", ""),
     ShortcutSpec("file.export_png", "actions.file.export_png", ""),
     ShortcutSpec("file.export_video", "actions.file.export_video", ""),
     ShortcutSpec("file.preferences", "actions.file.preferences", ""),

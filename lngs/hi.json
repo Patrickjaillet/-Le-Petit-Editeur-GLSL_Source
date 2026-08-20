@@ -5,8 +5,9 @@
     "englishName": "Hindi"
   },
   "app": {
-    "window_title": "Petit Editeur GLSL v{version}",
-    "toolbar_name": "मुख्य"
+    "window_title": "Petit Editeur GLSL v{version} [*]",
+    "toolbar_name": "मुख्य",
+    "window_title_file": "{filename} [*] — Petit Editeur GLSL v{version}"
   },
   "tabs": {
     "image": "इमेज",
@@ -28,6 +29,9 @@
       "save_as": "इस रूप में सहेजें(&A)…",
       "save_project": "प्रोजेक्ट को इस रूप में सहेजें(&J)…",
       "export_golfed": "गॉल्फ़ किया गया कोड निर्यात करें(&E)…",
+      "export_compiled_menu": "कंपाइल किया गया शेडर इसमें निर्यात करें",
+      "export_hlsl": "HLSL (.hlsl)…",
+      "export_msl": "Metal (.metal)…",
       "export_png": "इमेज निर्यात करें (PNG)(&I)…",
       "export_video": "वीडियो निर्यात करें (MP4)(&V)…",
       "preferences": "प्राथमिकताएँ(&P)…",
@@ -40,6 +44,7 @@
       "golf": "कोड को गॉल्फ़ करें(&G)",
       "golf_all": "पूरे प्रोजेक्ट को गॉल्फ़ करें(&T)",
       "undo_golf": "गॉल्फ़ पूर्ववत करें(&U)",
+      "degolf": "कोड फ़ॉर्मेट करें(&F)",
       "shortcuts": "कीबोर्ड शॉर्टकट(&K)…"
     },
     "help": {
@@ -54,7 +59,9 @@
     "play_pause_tooltip": "समय (iTime) चलाएँ/रोकें — कीफ़्रेम वाले स्लाइडर भी इससे एनिमेट होते हैं",
     "reset_time": "समय रीसेट करें",
     "reset_time_tooltip": "iTime को 0 पर रीसेट करता है — शुरुआत से कीफ़्रेम अनुक्रम को फिर से चलाने में उपयोगी",
-    "golf": "गॉल्फ़ 🏌"
+    "golf": "गॉल्फ़ 🏌",
+    "degolf": "फ़ॉर्मेट 🧹",
+    "degolf_tooltip": "कोड को फिर से फ़ॉर्मेट करता है (इंडेंटेशन, प्रति पंक्ति एक कथन, स्पेसिंग) — कुछ भी नाम बदले या व्यवहार बदले बिना"
   },
   "actions": {
     "file.new": "फ़ाइल: नया",
@@ -64,6 +71,8 @@
     "file.save_as": "फ़ाइल: इस रूप में सहेजें…",
     "file.save_project": "फ़ाइल: प्रोजेक्ट को इस रूप में सहेजें…",
     "file.export_golfed": "फ़ाइल: गॉल्फ़ किया गया कोड निर्यात करें…",
+    "file.export_hlsl": "फ़ाइल: HLSL में निर्यात करें…",
+    "file.export_msl": "फ़ाइल: Metal (MSL) में निर्यात करें…",
     "file.export_png": "फ़ाइल: इमेज निर्यात करें (PNG)…",
     "file.export_video": "फ़ाइल: वीडियो निर्यात करें (MP4)…",
     "file.preferences": "फ़ाइल: प्राथमिकताएँ…",
@@ -76,9 +85,14 @@
     "toolbar.compile": "टूलबार: कंपाइल करें",
     "toolbar.play_pause": "टूलबार: चलाएँ/रोकें",
     "toolbar.reset_time": "टूलबार: समय रीसेट करें",
-    "toolbar.golf": "टूलबार: गॉल्फ़"
+    "toolbar.golf": "टूलबार: गॉल्फ़",
+    "edit.degolf": "संपादन: कोड फ़ॉर्मेट करें",
+    "toolbar.degolf": "टूलबार: फ़ॉर्मेट"
   },
   "dialogs": {
+    "common": {
+      "open_folder_button": "फ़ोल्डर खोलें"
+    },
     "about": {
       "title": "जानकारी",
       "body": "Le Petit Editeur GLSL — संस्करण {version}\nCopyright © 2026 Patrick JAILLET — सर्वाधिकार सुरक्षित\nईमेल: sandefjord.development@proton.me\nवेबसाइट: https://patrickjaillet.github.io/Le-Petit-Editeur-GLSL"
@@ -113,6 +127,10 @@
       "body": "गॉल्फ़ किया गया कोड अब कंपाइल नहीं होता — एडिटर को अपरिवर्तित छोड़ दिया गया है। यह संभवतः गॉल्फ़र की एक बग है, कृपया इसे रिपोर्ट करें।\n\nकंपाइलेशन त्रुटि:\n{error}",
       "body_all_or_nothing": "[{label}] गॉल्फ़ किया गया कोड अब कंपाइल नहीं होता (कॉमन भी गॉल्फ़ किया गया) — कुछ भी नहीं बदला गया (सब कुछ या कुछ नहीं)।\n\nकंपाइलेशन त्रुटि:\n{error}"
     },
+    "degolf_cancelled": {
+      "title": "फ़ॉर्मेट रद्द",
+      "body": "फिर से फ़ॉर्मेट किया गया कोड अब कंपाइल नहीं होता — एडिटर में कोई बदलाव नहीं किया गया। यह संभवतः फ़ॉर्मेटर में एक बग है, कृपया इसकी रिपोर्ट करें।\n\nकंपाइलेशन त्रुटि:\n{error}"
+    },
     "undo_golf": {
       "title": "गॉल्फ़ पूर्ववत करें",
       "body": "पूर्ववत करने के लिए कोई गॉल्फ़ नहीं है।"
@@ -123,11 +141,15 @@
     },
     "golf_all_result": {
       "title": "पूरे प्रोजेक्ट को गॉल्फ़ करें",
-      "body": "{pass_count} पास + कॉमन गॉल्फ़ किया गया: {before} -> {after} बाइट्स (-{percent}%)."
+      "body": "{pass_count} पास + कॉमन गॉल्फ़ किया गया: {before} -> {after} बाइट्स (-{percent}%).\n\n{breakdown}",
+      "per_pass_line": "{label}: {before} -> {after} बाइट्स (-{percent}%)"
     },
     "unsaved_changes": {
       "title": "असहेजे गए परिवर्तन",
-      "body": "मौजूदा प्रोजेक्ट में असहेजे गए परिवर्तन हैं। जारी रखें और उन्हें खो दें?"
+      "body": "मौजूदा प्रोजेक्ट में असहेजे गए परिवर्तन हैं। जारी रखें और उन्हें खो दें?",
+      "save_button": "सहेजें",
+      "discard_button": "सहेजें नहीं",
+      "cancel_button": "रद्द करें"
     },
     "open_shader": {
       "title": "शेडर खोलें",
@@ -135,7 +157,8 @@
     },
     "open_project": {
       "title": "प्रोजेक्ट खोलें",
-      "filter": "प्रोजेक्ट (*.json)"
+      "filter": "प्रोजेक्ट (*.json)",
+      "future_format_warning": "यह प्रोजेक्ट सॉफ़्टवेयर के एक नए संस्करण के साथ सहेजा गया था (फ़ॉर्मेट {file_format}, यह संस्करण केवल फ़ॉर्मेट {current_format} तक जानता है)। कुछ सेटिंग्स सही तरीके से लोड नहीं हो सकतीं — सॉफ़्टवेयर अपडेट करने पर विचार करें।"
     },
     "open_error": {
       "title": "खोलें",
@@ -160,15 +183,32 @@
     },
     "save_project": {
       "title": "प्रोजेक्ट सहेजें",
-      "filter": "प्रोजेक्ट (*.json)"
+      "filter": "प्रोजेक्ट (*.json)",
+      "export_success": "प्रोजेक्ट सफलतापूर्वक सहेजा गया:\n{path}"
     },
     "export_golfed": {
       "title": "गॉल्फ़ किया गया कोड निर्यात करें",
-      "filter": "GLSL (*.frag *.glsl)"
+      "filter": "GLSL (*.frag *.glsl)",
+      "export_success": "गॉल्फ़ किया गया कोड सफलतापूर्वक एक्सपोर्ट किया गया:\n{path}"
+    },
+    "export_shader": {
+      "title": "कंपाइल किया गया शेडर निर्यात करें",
+      "not_reeditable_hlsl": "जनरेट की गई HLSL फ़ाइल निर्यात के समय कंपाइल किए गए शेडर का सटीक अनुवाद है। यह सॉफ़्टवेयर HLSL को वापस नहीं पढ़ सकता: आप इस .hlsl फ़ाइल को यहाँ संपादन जारी रखने के लिए एडिटर में वापस पेस्ट नहीं कर सकते — किसी भी आगे के बदलाव के लिए हमेशा GLSL/WGSL स्रोत से शुरू करें।",
+      "not_reeditable_msl": "जनरेट की गई Metal (MSL) फ़ाइल निर्यात के समय कंपाइल किए गए शेडर का सटीक अनुवाद है। यह सॉफ़्टवेयर MSL को वापस नहीं पढ़ सकता: आप इस .metal फ़ाइल को यहाँ संपादन जारी रखने के लिए एडिटर में वापस पेस्ट नहीं कर सकते — किसी भी आगे के बदलाव के लिए हमेशा GLSL/WGSL स्रोत से शुरू करें।",
+      "bindings_caveat_hlsl": "यदि यह शेडर कस्टम टेक्सचर या सेटिंग्स (iChannel, uniforms) का उपयोग करता है, तो एक्सपोर्ट की गई फ़ाइल इन्हें एक स्वचालित परंपरा के अनुसार जोड़ती है जो आपके लक्षित इंजन की अपेक्षा से मेल नहीं खा सकती: फ़ाइल को जैसी है वैसी कंपाइल होने से पहले थोड़ा मैन्युअल समायोजन चाहिए हो सकता है।",
+      "bindings_caveat_msl": "यदि यह शेडर कस्टम टेक्सचर या सेटिंग्स (iChannel, uniforms) का उपयोग करता है, तो एक्सपोर्ट की गई फ़ाइल इन्हें एक स्वचालित परंपरा के अनुसार जोड़ती है जो आपके लक्षित इंजन की अपेक्षा से मेल नहीं खा सकती: फ़ाइल को जैसी है वैसी कंपाइल होने से पहले थोड़ा मैन्युअल समायोजन चाहिए हो सकता है।",
+      "pixel_fidelity_caveat": "इस बात की कोई गारंटी नहीं है कि इस फ़ाइल को किसी तृतीय-पक्ष इंजन में फिर से कंपाइल करने पर यहाँ दिखाए गए लाइव पूर्वावलोकन जैसा पिक्सेल-दर-पिक्सेल समान रेंडर मिलेगा — यह अनुवाद कार्यात्मक शुद्धता का लक्ष्य रखता है, न कि संविदात्मक रूप से गारंटीकृत बिट-सटीक मिलान का; इसे अपने लक्ष्य इंजन में केस-दर-केस आधार पर सत्यापित करें।",
+      "common_tab_body": "Common टैब अपने आप में कोई कंपाइल किया गया पास नहीं है — HLSL/Metal में निर्यात करने से पहले कोई Buffer या Image टैब चुनें।",
+      "filter_hlsl": "HLSL (*.hlsl)",
+      "filter_msl": "Metal (*.metal)",
+      "failed_title": "निर्यात रद्द किया गया",
+      "failed_body": "इस शेडर का अनुवाद विफल रहा:\n\n{error}",
+      "export_success": "फ़ाइल सफलतापूर्वक एक्सपोर्ट की गई:\n{path}"
     },
     "export_png": {
       "title": "इमेज निर्यात करें",
-      "nothing_to_export": "अभी निर्यात करने के लिए कुछ नहीं है।"
+      "nothing_to_export": "अभी निर्यात करने के लिए कुछ नहीं है।",
+      "export_success": "छवि सफलतापूर्वक एक्सपोर्ट की गई:\n{path}"
     },
     "export_video": {
       "title": "वीडियो निर्यात करें (MP4)",
@@ -185,13 +225,25 @@
       "crf_preset_quality": "गुणवत्ता",
       "crf_preset_balanced": "संतुलित",
       "crf_preset_smallest": "सबसे छोटा आकार",
+      "audio_group": "संगीत",
+      "audio_enable": "ऑडियो ट्रैक जोड़ें",
+      "audio_browse": "ब्राउज़ करें…",
+      "audio_placeholder": "कोई फ़ाइल चयनित नहीं",
+      "audio_file_filter": "ऑडियो ({extensions})",
+      "audio_volume": "आवाज़",
+      "audio_start_offset": "प्रारंभ बिंदु",
+      "audio_bitrate": "ऑडियो गुणवत्ता",
+      "audio_loop": "यदि वीडियो से छोटा हो तो संगीत लूप करें",
       "estimated_size": "अनुमानित आकार: ~{size}",
       "save_dialog_title": "वीडियो निर्यात करें",
       "save_dialog_default_name": "shader.mp4",
       "save_dialog_filter": "वीडियो (*.mp4)",
       "ffmpeg_missing": "ffmpeg नहीं मिला ({path})।\n\nCOMPILATION.md का \"वीडियो निर्यात\" सेक्शन देखें: अपेक्षित बाइनरी packaging/bin/ffmpeg.exe है।",
       "export_failed": "निर्यात विफल:\n{error}",
-      "export_success": "वीडियो सफलतापूर्वक निर्यात किया गया ({frames} फ़्रेम, {width}×{height} @ {fps} fps):\n{path}"
+      "export_success": "वीडियो सफलतापूर्वक निर्यात किया गया ({frames} फ़्रेम, {width}×{height} @ {fps} fps):\n{path}",
+      "resolution_too_large": "रिज़ॉल्यूशन {width}×{height} बहुत अधिक है: यह ग्राफ़िक्स कार्ड प्रति साइड अधिकतम {max}px ही समर्थन करता है। कृपया छोटा रिज़ॉल्यूशन चुनें।",
+      "resize_failed": "इस रिज़ॉल्यूशन पर एक्सपोर्ट तैयार नहीं किया जा सका: {error}",
+      "restore_resolution_failed": "चेतावनी: निर्यात के बाद पिछला पूर्वावलोकन रिज़ॉल्यूशन पुनर्स्थापित नहीं किया जा सका: {error}"
     },
     "export_progress": {
       "title": "वीडियो निर्यात करें (MP4)",
@@ -209,7 +261,9 @@
       "shadertoy_api_key": "Shadertoy API कुंजी",
       "shadertoy_api_key_placeholder": "(खाली = अगले आयात पर फिर से पूछा जाएगा)",
       "language": "भाषा",
-      "language_restart_notice": "भाषा परिवर्तन अगली बार एप्लिकेशन शुरू होने पर प्रभावी होगा।"
+      "language_restart_notice": "भाषा परिवर्तन अगली बार एप्लिकेशन शुरू होने पर प्रभावी होगा।",
+      "autosave_enabled": "स्वचालित बैकअप",
+      "autosave_interval_minutes": "बैकअप अंतराल"
     },
     "shortcuts": {
       "title": "कीबोर्ड शॉर्टकट",
@@ -227,7 +281,10 @@
       "face_row": "फेस {face}",
       "choose_face_image": "फेस के लिए इमेज चुनें",
       "missing_faces_title": "क्यूबमैप",
-      "missing_faces_body": "सभी 6 फेस भरे जाने चाहिए।"
+      "missing_faces_body": "सभी 6 फेस भरे जाने चाहिए।",
+      "file_not_found_body": "इन फेस के लिए फ़ाइल नहीं मिली: {faces}।",
+      "face_not_square": "फेस {face}: {width}x{height} — क्यूबमैप फेस वर्गाकार होना चाहिए।",
+      "face_size_mismatch": "फेस {face}: {size}x{size}, अपेक्षित {expected}x{expected} (अन्य पहले से चुने गए फेस की तरह)।"
     },
     "slider_bounds": {
       "title": "स्लाइडर सीमाएँ",
@@ -235,6 +292,12 @@
       "max": "अधिकतम",
       "decimals": "दशमलव अंक",
       "menu_edit": "न्यूनतम / अधिकतम संपादित करें…"
+    },
+    "keyframe_curve": {
+      "title": "इंटरपोलेशन वक्र",
+      "linear": "रैखिक",
+      "ease": "मुलायम (ease)",
+      "step": "चरण"
     },
     "color_picker": {
       "title": "रंग चुनें"
@@ -254,7 +317,23 @@
     },
     "ichannel_error": {
       "title": "iChannel"
-    }
+    },
+    "ichannel_drop_rejected": {
+      "title": "असमर्थित फ़ाइल",
+      "body": "यह फ़ाइल ({extension}) iChannel के लिए समर्थित छवि, वीडियो या ऑडियो प्रारूप नहीं है।",
+      "no_extension": "बिना एक्सटेंशन"
+    },
+    "crash_recovery": {
+      "title": "असहेजा गया कार्य पुनर्स्थापित करें?",
+      "body": "सॉफ़्टवेयर सामान्य रूप से बंद नहीं हुआ। {timestamp} का एक स्वचालित बैकअप उपलब्ध है: क्या इसे पुनर्स्थापित करें?",
+      "restore_button": "पुनर्स्थापित करें",
+      "discard_button": "छोड़ें"
+    },
+    "gpu_error": {
+      "title": "असमर्थित ग्राफ़िक्स कार्ड",
+      "body": "शुरू नहीं हो सका: इस कंप्यूटर पर कोई संगत ग्राफ़िक्स कार्ड नहीं मिला।\n\nअपने ग्राफ़िक्स कार्ड ड्राइवर को अपडेट करने का प्रयास करें, फिर सॉफ़्टवेयर को फिर से लॉन्च करें।\n\nतकनीकी विवरण: {error}"
+    },
+    "viewport_resize_error": "पूर्वावलोकन का आकार नहीं बदला गया (ग्राफ़िक्स मेमोरी अपर्याप्त): {error}"
   },
   "sliders_panel": {
     "filter_placeholder": "फ़िल्टर करें…",
@@ -278,6 +357,7 @@
     ],
     "add_keyframe_menu": "कीफ़्रेम जोड़ें (t={time}s)",
     "clear_keyframes_menu": "कीफ़्रेम साफ़ करें",
+    "edit_curve_menu": "इंटरपोलेशन वक्र…",
     "add_keyframe_tooltip": "वर्तमान समय पर कीफ़्रेम जोड़ें (t={time}s)",
     "keyframe_button_tooltip": "क्लिक: t={time}s पर जोड़ें/अपडेट करें — राइट-क्लिक: अधिक विकल्प",
     "reset_category": "↺ श्रेणी रीसेट करें",
@@ -290,7 +370,7 @@
   "ichannel_panel": {
     "video_filter": "वीडियो (*.mp4 *.mov *.m4v *.avi *.mkv *.webm)",
     "audio_filter": "ऑडियो (*.mp3 *.wav *.ogg *.flac)",
-    "image_filter": "इमेज (*.png *.jpg *.jpeg *.bmp)",
+    "image_filter": "इमेज (*.png *.jpg *.jpeg *.bmp *.gif *.webp)",
     "source_empty": "खाली",
     "source_image": "इमेज (फ़ाइल)",
     "source_video": "वीडियो (फ़ाइल)…",
@@ -305,6 +385,12 @@
     "change_cubemap": "फेस संपादित करें…",
     "change_video": "वीडियो बदलें…",
     "change_audio": "ऑडियो बदलें…",
+    "volume_tooltip": "ऑडियो इनपुट वॉल्यूम (सिस्टम वॉल्यूम से स्वतंत्र)",
+    "mute_tooltip": "म्यूट",
+    "procedural_scale_label": "पैटर्न आकार",
+    "procedural_scale_tooltip": "पैटर्न आकार (सेल संख्या / नॉइज़ ग्रिड रिज़ॉल्यूशन)",
+    "procedural_seed_label": "बीज",
+    "procedural_seed_tooltip": "यादृच्छिक बीज (0 = इस प्रीसेट का डिफ़ॉल्ट)",
     "change_webcam": "वेबकैम बदलें…",
     "choose_video": "iChannel{index} के लिए वीडियो चुनें",
     "choose_audio": "iChannel{index} के लिए ऑडियो फ़ाइल चुनें",
@@ -312,16 +398,32 @@
     "procedural_suffix": "{label} (प्रोसीजरल)",
     "thumb_empty": "खाली",
     "thumb_cube": "क्यूब",
-    "default_webcam_tooltip": "डिफ़ॉल्ट वेबकैम"
+    "default_webcam_tooltip": "डिफ़ॉल्ट वेबकैम",
+    "source_lost_tooltip": "स्रोत खो गया: {message}"
   },
   "footer": {
     "fps": "FPS: {fps}",
+    "resolution": "{width}×{height} ({percent}%)",
+    "resolution_tooltip": "पूर्वावलोकन द्वारा वास्तव में उपयोग किया जाने वाला रेंडर रिज़ॉल्यूशन, विंडो के आकार से स्वतंत्र।",
+    "render_scale_tooltip": "पूर्वावलोकन रेंडर स्केल (भारी शेडर पर सुचारू बने रहने के लिए इसे कम करें)",
     "ready": "तैयार",
     "compile_ok": "कंपाइल सफल",
     "compile_error": "त्रुटि: {message}",
     "frame_time_tooltip": "प्रति फ़्रेम रेंडर समय (लाल बार = ~30 FPS से धीमा)",
     "size_tooltip": "गॉल्फ़िंग से पहले/बाद का मूल आकार और अनुमानित gzip आकार (वास्तव में स्थानांतरित/संग्रहीत आकार का एक अनुमान)। मार्कर (< 2 KB / < 4 KB / < 8 KB) पारंपरिक डेमोसीन 4k/8k कॉम्पो सीमाओं के अनुरूप है, गॉल्फ़ किए गए मूल आकार पर आधारित — किसी बाहरी स्कोर के साथ ऑनलाइन तुलना नहीं है।",
     "size_format": "{before} -> {after} बाइट्स (-{percent}%) | gzip {before_gz} -> {after_gz}{tier_suffix}",
-    "size_tier": "< {kb} KB"
+    "size_tier": "< {kb} KB",
+    "size_tier_approaching": "{kb} KB के करीब",
+    "dialect_shadertoy": "Shadertoy",
+    "dialect_glsl": "GLSL",
+    "dialect_wgsl": "WGSL",
+    "dialect_tooltip": "{signal} के ज़रिए पहचाना गया मोड: {mode}",
+    "dialect_signal_mainimage": "mainImage() की उपस्थिति",
+    "dialect_signal_voidmain": "void main() की उपस्थिति",
+    "dialect_signal_version": "#version की उपस्थिति",
+    "dialect_signal_fragcolor": "gl_FragColor की उपस्थिति",
+    "dialect_signal_wgslentrypoint": "WGSL @fragment fn प्रवेश बिंदु की उपस्थिति",
+    "dialect_signal_wgsluniformorgeneric": "var<uniform> या WGSL सामान्यीकृत प्रकार की उपस्थिति",
+    "dialect_signal_none": "कोई संकेत नहीं, पिछला मोड बना रहेगा"
   }
 }

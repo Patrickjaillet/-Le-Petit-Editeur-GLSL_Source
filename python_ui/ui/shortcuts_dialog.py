@@ -1,7 +1,10 @@
 """Keyboard-shortcut rebinding dialog: one row per entry in
 `shortcuts.SHORTCUT_SPECS`, a `QKeySequenceEdit` per row to capture a new
-binding, live duplicate detection, and a per-row "Réinitialiser" plus a
-global "Tout réinitialiser" back to `shortcuts.py`'s built-in defaults.
+binding, live duplicate detection (RM10.md section 10 -- a conflict is
+flagged the moment a row finishes capturing a new binding, via an inline
+warning label naming the command it collides with, not only when Ok is
+pressed), and a per-row "Réinitialiser" plus a global "Tout réinitialiser"
+back to `shortcuts.py`'s built-in defaults.
 
 Opened from `MainWindow`'s Edition menu ("Raccourcis clavier…"); changes
 are only written to `QSettings` (via `ShortcutRegistry.apply_many`) if the
@@ -58,6 +61,7 @@ class ShortcutsDialog(QDialog):
             table.setItem(row, 0, label_item)
 
             editor = QKeySequenceEdit(QKeySequence(registry.current_sequence(spec.action_id)), table)
+            editor.editingFinished.connect(self._check_live_conflict)
             table.setCellWidget(row, 1, editor)
             self._editors[spec.action_id] = editor
 
@@ -68,6 +72,17 @@ class ShortcutsDialog(QDialog):
         table.resizeRowsToContents()
         layout.addWidget(table)
         self._table = table
+
+        # RM10.md section 10: flagged the instant a row finishes capturing
+        # a binding (see `editingFinished` connections above/below), not
+        # only when Ok is pressed -- text-based (not color-only, see the
+        # accessibility item in the same roadmap), hidden while there's
+        # nothing to report.
+        self._conflict_label = QLabel("")
+        self._conflict_label.setStyleSheet("color: #d9534f; font-weight: 600;")
+        self._conflict_label.setWordWrap(True)
+        self._conflict_label.hide()
+        layout.addWidget(self._conflict_label)
 
         button_row = QHBoxLayout()
         reset_all_button = QPushButton(tr("dialogs.shortcuts.reset_all"))
@@ -83,20 +98,23 @@ class ShortcutsDialog(QDialog):
 
     def _reset_row(self, action_id: str) -> None:
         self._editors[action_id].setKeySequence(QKeySequence(default_shortcut(action_id)))
+        self._check_live_conflict()
 
     def _reset_all(self) -> None:
         for spec in SHORTCUT_SPECS:
             self._editors[spec.action_id].setKeySequence(QKeySequence(spec.default))
+        self._check_live_conflict()
 
     def _find_conflict(self) -> tuple[str, str] | None:
         """Returns the (action_id, action_id) pair of the first two
         commands that would end up sharing the same non-empty shortcut if
-        Ok were pressed now, or `None` if there's no conflict. Checked on
-        accept rather than on every keystroke -- a mid-edit
-        `QKeySequenceEdit` is routinely a *prefix* of another binding
-        (e.g. typing "Ctrl" while "Ctrl+S" already exists elsewhere) and
-        flagging that transient state as a conflict would be more
-        annoying than helpful.
+        Ok were pressed now, or `None` if there's no conflict. Not hooked
+        to every keystroke -- a mid-edit `QKeySequenceEdit` is routinely a
+        *prefix* of another binding (e.g. typing "Ctrl" while "Ctrl+S"
+        already exists elsewhere) and flagging that transient state as a
+        conflict would be more annoying than helpful -- but *is* re-run
+        every time a row finishes capturing a binding (`editingFinished`,
+        see `_check_live_conflict`) as well as on accept, not only then.
         """
         seen: dict[str, str] = {}
         for spec in SHORTCUT_SPECS:
@@ -108,6 +126,25 @@ class ShortcutsDialog(QDialog):
             seen[text] = spec.action_id
 
         return None
+
+    def _check_live_conflict(self) -> None:
+        """RM10.md section 10: shows/hides the inline warning label the
+        instant a row finishes capturing a new binding (wired to every
+        `QKeySequenceEdit.editingFinished` above, plus both reset
+        actions) -- named after the two colliding commands, exactly like
+        the modal accept-time check below, just surfaced immediately
+        instead of only once Ok is pressed.
+        """
+        conflict = self._find_conflict()
+        if conflict is None:
+            self._conflict_label.hide()
+            self._conflict_label.setText("")
+            return
+        first_id, second_id = conflict
+        first = tr(f"actions.{first_id}")
+        second = tr(f"actions.{second_id}")
+        self._conflict_label.setText(tr("dialogs.shortcuts.duplicate_body", first=first, second=second))
+        self._conflict_label.show()
 
     def _on_accept(self) -> None:
         conflict = self._find_conflict()

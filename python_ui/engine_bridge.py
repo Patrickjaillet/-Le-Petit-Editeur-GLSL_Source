@@ -24,11 +24,13 @@ golf_shader = _native.golf_shader
 golf_common = _native.golf_common
 golf_shader_with_common = _native.golf_shader_with_common
 golf_shader_ex = _native.golf_shader_ex
+beautify_shader = _native.beautify_shader
 fragment_header_line_count = _native.fragment_header_line_count
 fragment_header_line_count_for_dialect = _native.fragment_header_line_count_for_dialect
 detect_dialect = _native.detect_dialect
 DIALECT_SHADERTOY = _native.DIALECT_SHADERTOY
 DIALECT_GLSL = _native.DIALECT_GLSL
+DIALECT_WGSL = _native.DIALECT_WGSL
 
 # Shadertoy-style multi-pass indices (Buffer A-D feed each other and the
 # final Image pass, which is the only one actually displayed).

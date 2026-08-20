@@ -199,12 +199,23 @@ def _count_frames(frames_dir: Path) -> int:
     return sum(1 for _ in frames_dir.glob("frame_*.png"))
 
 
+AUDIO_BITRATE_PRESETS_KBPS = (128, 192, 320)
+DEFAULT_AUDIO_BITRATE_KBPS = 192
+AUDIO_VOLUME_MIN_DB, AUDIO_VOLUME_MAX_DB = -20.0, 20.0
+AUDIO_START_OFFSET_MIN_S, AUDIO_START_OFFSET_MAX_S = 0.0, 3600.0
+
+
 def encode_frames_to_mp4(
     frames_dir: str | Path,
     out_path: str | Path,
     fps: float,
     crf: int,
     ffmpeg_path: str | Path | None = None,
+    audio_path: str | Path | None = None,
+    audio_volume_db: float = 0.0,
+    audio_start_offset: float = 0.0,
+    audio_loop: bool = True,
+    audio_bitrate_kbps: int = DEFAULT_AUDIO_BITRATE_KBPS,
     on_progress: Callable[[int, int], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
 ) -> None:
@@ -214,6 +225,37 @@ def encode_frames_to_mp4(
     output plays back in essentially every player/social network,
     including ones that don't handle a 4:4:4 encode from RGBA8 source by
     default.
+
+    `audio_path`, if given, is muxed in as an AAC audio track
+    (`-c:a aac`, at `audio_bitrate_kbps`). The whole output is clamped to
+    the video's own duration with `-t` -- so a track longer than the
+    video is simply cut off and the output's *video* length is never
+    affected by the music: `-shortest` alone would truncate the rendered
+    frames themselves whenever the chosen track is shorter, which is
+    never what "add music to the export" should mean here.
+
+    Four knobs tune how that track is used, none of them touching the
+    video side at all:
+      - `audio_loop`: if `True` (the default), the track is read with
+        `-stream_loop -1` so a track shorter than the video repeats
+        seamlessly to cover it; if `False`, a short track just leaves the
+        rest of the export silent instead of looping.
+      - `audio_start_offset`: seconds trimmed off the *start* of the
+        track before it's used (`-ss` on the audio input) -- lets a
+        track's intro/silence be skipped so the export starts on its
+        chorus/drop instead of from second 0. Known ffmpeg quirk worth
+        flagging: combined with `audio_loop=True`, this offset is only
+        honored on the *first* pass through the file -- `-stream_loop`
+        restarts every subsequent repeat from the file's own beginning
+        (time 0), not from this offset again. Harmless for a short loop
+        buried inside a long export, but a track whose loop point matters
+        should be pre-trimmed rather than relying on this for every
+        repeat.
+      - `audio_volume_db`: a gain in dB applied via the `volume` audio
+        filter (e.g. `-6.0` to quiet a track down, `+6.0` to boost a
+        quiet one) -- `0.0` (the default) adds no filter at all, so the
+        common case doesn't pay for a no-op `-af`.
+      - `audio_bitrate_kbps`: the AAC encode bitrate, `-b:a {n}k`.
 
     Progress is read from `-progress pipe:1 -nostats`: ffmpeg writes
     plain `key=value` lines to stdout (one block per output frame, ended
@@ -247,10 +289,31 @@ def encode_frames_to_mp4(
         "-y",
         "-framerate", str(fps),
         "-i", str(frames_dir / FRAME_FILENAME_TEMPLATE),
+    ]
+    if audio_path is not None:
+        if audio_loop:
+            cmd += ["-stream_loop", "-1"]
+        if audio_start_offset > 0:
+            cmd += ["-ss", str(audio_start_offset)]
+        cmd += ["-i", str(audio_path)]
+    cmd += [
         "-c:v", "libx264",
         "-preset", "medium",
         "-crf", str(crf),
         "-pix_fmt", "yuv420p",
+    ]
+    if audio_path is not None:
+        duration_seconds = total_frames / fps
+        if audio_volume_db != 0.0:
+            cmd += ["-af", f"volume={audio_volume_db}dB"]
+        cmd += [
+            "-c:a", "aac",
+            "-b:a", f"{audio_bitrate_kbps}k",
+            "-map", "0:v:0",
+            "-map", "1:a:0",
+            "-t", str(duration_seconds),
+        ]
+    cmd += [
         "-progress", "pipe:1",
         "-nostats",
         str(out_path),
@@ -371,6 +434,11 @@ def run_export(
     out_path: str | Path,
     mouse: tuple[float, float, float, float] = FIXED_MOUSE,
     ffmpeg_path: str | Path | None = None,
+    audio_path: str | Path | None = None,
+    audio_volume_db: float = 0.0,
+    audio_start_offset: float = 0.0,
+    audio_loop: bool = True,
+    audio_bitrate_kbps: int = DEFAULT_AUDIO_BITRATE_KBPS,
     on_capture_progress: Callable[[int, int], None] | None = None,
     on_encode_progress: Callable[[int, int], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
@@ -382,6 +450,10 @@ def run_export(
     on cancellation alike. This is the one entry point the export dialog
     and the headless CLI (`run.py --export-mp4`) both call; neither has
     to know the frame sequence ever touched disk as an intermediate step.
+
+    `audio_path` and the four `audio_*` knobs are forwarded verbatim to
+    `encode_frames_to_mp4` to mux a music track into the export — see
+    that function's docstring for what each one does.
     """
     tmp_dir = Path(tempfile.mkdtemp(prefix="petit_editeur_glsl_export_"))
     try:
@@ -403,6 +475,11 @@ def run_export(
             fps,
             crf,
             ffmpeg_path=ffmpeg_path,
+            audio_path=audio_path,
+            audio_volume_db=audio_volume_db,
+            audio_start_offset=audio_start_offset,
+            audio_loop=audio_loop,
+            audio_bitrate_kbps=audio_bitrate_kbps,
             on_progress=on_encode_progress,
             should_cancel=should_cancel,
         )

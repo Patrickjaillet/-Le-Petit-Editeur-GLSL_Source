@@ -5,8 +5,9 @@
     "englishName": "Norwegian"
   },
   "app": {
-    "window_title": "Petit Editeur GLSL v{version}",
-    "toolbar_name": "Hoved"
+    "window_title": "Petit Editeur GLSL v{version} [*]",
+    "toolbar_name": "Hoved",
+    "window_title_file": "{filename} [*] — Petit Editeur GLSL v{version}"
   },
   "tabs": {
     "image": "Bilde",
@@ -28,6 +29,9 @@
       "save_as": "L&agre som…",
       "save_project": "Lagre &prosjektet som…",
       "export_golfed": "&Eksporter golfet kode…",
+      "export_compiled_menu": "Eksporter kompilert shader til",
+      "export_hlsl": "HLSL (.hlsl)…",
+      "export_msl": "Metal (.metal)…",
       "export_png": "Eksporter et &bilde (PNG)…",
       "export_video": "Eksporter en &video (MP4)…",
       "preferences": "&Innstillinger…",
@@ -40,6 +44,7 @@
       "golf": "&Golf koden",
       "golf_all": "Golf &hele prosjektet",
       "undo_golf": "Angre &golfen",
+      "degolf": "&Avgolf koden",
       "shortcuts": "&Tastatursnarveier…"
     },
     "help": {
@@ -54,7 +59,9 @@
     "play_pause_tooltip": "Spill av/pause tiden (iTime) — animerer også glidebrytere med nøkkelbilder",
     "reset_time": "Tilbakestill tiden",
     "reset_time_tooltip": "Tilbakestiller iTime til 0 — nyttig for å spille av en nøkkelbildesekvens fra begynnelsen igjen",
-    "golf": "Golf 🏌"
+    "golf": "Golf 🏌",
+    "degolf": "Avgolf 🧹",
+    "degolf_tooltip": "Formaterer koden på nytt (innrykk, én setning per linje, mellomrom) uten å endre navn på noe eller endre virkemåten"
   },
   "actions": {
     "file.new": "Fil: Ny",
@@ -64,6 +71,8 @@
     "file.save_as": "Fil: Lagre som…",
     "file.save_project": "Fil: Lagre prosjektet som…",
     "file.export_golfed": "Fil: Eksporter golfet kode…",
+    "file.export_hlsl": "Fil: Eksporter til HLSL…",
+    "file.export_msl": "Fil: Eksporter til Metal (MSL)…",
     "file.export_png": "Fil: Eksporter et bilde (PNG)…",
     "file.export_video": "Fil: Eksporter en video (MP4)…",
     "file.preferences": "Fil: Innstillinger…",
@@ -76,9 +85,14 @@
     "toolbar.compile": "Verktøylinje: Kompiler",
     "toolbar.play_pause": "Verktøylinje: Spill av/Pause",
     "toolbar.reset_time": "Verktøylinje: Tilbakestill tiden",
-    "toolbar.golf": "Verktøylinje: Golf"
+    "toolbar.golf": "Verktøylinje: Golf",
+    "edit.degolf": "Rediger: Avgolf koden",
+    "toolbar.degolf": "Verktøylinje: Avgolf"
   },
   "dialogs": {
+    "common": {
+      "open_folder_button": "Åpne mappe"
+    },
     "about": {
       "title": "Om",
       "body": "Le Petit Editeur GLSL — versjon {version}\nCopyright © 2026 Patrick JAILLET — Med enerett\nE-post: sandefjord.development@proton.me\nNettside: https://patrickjaillet.github.io/Le-Petit-Editeur-GLSL"
@@ -113,6 +127,10 @@
       "body": "Den golfede koden kompilerer ikke lenger — editoren ble ikke endret. Dette er sannsynligvis en feil i golferen, vennligst rapporter den.\n\nKompileringsfeil:\n{error}",
       "body_all_or_nothing": "[{label}] den golfede koden kompilerer ikke lenger (med Felles golfet) — ingenting ble endret (alt eller ingenting).\n\nKompileringsfeil:\n{error}"
     },
+    "degolf_cancelled": {
+      "title": "Avgolf avbrutt",
+      "body": "Den omformaterte koden kompilerer ikke lenger — editoren ble ikke endret. Dette er sannsynligvis en feil i avgolferen, vennligst rapporter det.\n\nKompileringsfeil:\n{error}"
+    },
     "undo_golf": {
       "title": "Angre golfen",
       "body": "Ingen golf å angre."
@@ -123,11 +141,15 @@
     },
     "golf_all_result": {
       "title": "Golf hele prosjektet",
-      "body": "{pass_count} pass(er) + Felles golfet: {before} -> {after} byte (-{percent}%)."
+      "body": "{pass_count} pass(er) + Felles golfet: {before} -> {after} byte (-{percent}%).\n\n{breakdown}",
+      "per_pass_line": "{label}: {before} -> {after} byte (-{percent}%)"
     },
     "unsaved_changes": {
       "title": "Ulagrede endringer",
-      "body": "Det gjeldende prosjektet har ulagrede endringer. Fortsette og miste dem?"
+      "body": "Det gjeldende prosjektet har ulagrede endringer. Fortsette og miste dem?",
+      "save_button": "Lagre",
+      "discard_button": "Ikke lagre",
+      "cancel_button": "Avbryt"
     },
     "open_shader": {
       "title": "Åpne en shader",
@@ -135,7 +157,8 @@
     },
     "open_project": {
       "title": "Åpne et prosjekt",
-      "filter": "Prosjekt (*.json)"
+      "filter": "Prosjekt (*.json)",
+      "future_format_warning": "Dette prosjektet ble lagret med en nyere versjon av programvaren (format {file_format}, denne versjonen kjenner bare til format {current_format}). Noen innstillinger kan bli feil lastet — vurder å oppdatere programvaren."
     },
     "open_error": {
       "title": "Åpne",
@@ -160,15 +183,32 @@
     },
     "save_project": {
       "title": "Lagre prosjektet",
-      "filter": "Prosjekt (*.json)"
+      "filter": "Prosjekt (*.json)",
+      "export_success": "Prosjektet ble lagret:\n{path}"
     },
     "export_golfed": {
       "title": "Eksporter golfet kode",
-      "filter": "GLSL (*.frag *.glsl)"
+      "filter": "GLSL (*.frag *.glsl)",
+      "export_success": "Golfet kode eksportert:\n{path}"
+    },
+    "export_shader": {
+      "title": "Eksporter kompilert shader",
+      "not_reeditable_hlsl": "Den genererte HLSL-filen er en tro oversettelse av shaderen slik den var kompilert på eksporttidspunktet. Programmet kan ikke lese HLSL tilbake: du kan ikke lime denne .hlsl-filen inn i editoren igjen for å fortsette å redigere den her — gå alltid tilbake til GLSL/WGSL-kildekoden for videre endringer.",
+      "not_reeditable_msl": "Den genererte Metal-filen (MSL) er en tro oversettelse av shaderen slik den var kompilert på eksporttidspunktet. Programmet kan ikke lese MSL tilbake: du kan ikke lime denne .metal-filen inn i editoren igjen for å fortsette å redigere den her — gå alltid tilbake til GLSL/WGSL-kildekoden for videre endringer.",
+      "bindings_caveat_hlsl": "Hvis denne shaderen bruker egne teksturer eller innstillinger (iChannel, uniforms), kobler den eksporterte filen dem sammen etter en automatisk konvensjon som kanskje ikke stemmer med den motoren din forventer: filen kan trenge en liten manuell justering før den kompilerer som den er.",
+      "bindings_caveat_msl": "Hvis denne shaderen bruker egne teksturer eller innstillinger (iChannel, uniforms), kobler den eksporterte filen dem sammen etter en automatisk konvensjon som kanskje ikke stemmer med den motoren din forventer: filen kan trenge en liten manuell justering før den kompilerer som den er.",
+      "pixel_fidelity_caveat": "Det er ingen garanti for at ny kompilering av denne filen i en tredjeparts-motor gir et pikselidentisk resultat sammenlignet med forhåndsvisningen her — oversettelsen sikter mot funksjonell korrekthet, ikke en kontraktsfestet bit-eksakt match; må verifiseres fra sak til sak i målmotoren din.",
+      "common_tab_body": "Fanen Common er ikke en kompilert pass i seg selv — velg en Buffer- eller Image-fane før du eksporterer til HLSL/Metal.",
+      "filter_hlsl": "HLSL (*.hlsl)",
+      "filter_msl": "Metal (*.metal)",
+      "failed_title": "Eksport avbrutt",
+      "failed_body": "Oversettelsen av denne shaderen mislyktes:\n\n{error}",
+      "export_success": "Filen ble eksportert:\n{path}"
     },
     "export_png": {
       "title": "Eksporter et bilde",
-      "nothing_to_export": "Ingenting å eksportere akkurat nå."
+      "nothing_to_export": "Ingenting å eksportere akkurat nå.",
+      "export_success": "Bildet ble eksportert:\n{path}"
     },
     "export_video": {
       "title": "Eksporter en video (MP4)",
@@ -185,13 +225,25 @@
       "crf_preset_quality": "Kvalitet",
       "crf_preset_balanced": "Balansert",
       "crf_preset_smallest": "Minste størrelse",
+      "audio_group": "Musikk",
+      "audio_enable": "Legg til et lydspor",
+      "audio_browse": "Bla gjennom…",
+      "audio_placeholder": "Ingen fil valgt",
+      "audio_file_filter": "Lyd ({extensions})",
+      "audio_volume": "Volum",
+      "audio_start_offset": "Startpunkt",
+      "audio_bitrate": "Lydkvalitet",
+      "audio_loop": "Løkke musikken hvis den er kortere enn videoen",
       "estimated_size": "Anslått størrelse: ~{size}",
       "save_dialog_title": "Eksporter en video",
       "save_dialog_default_name": "shader.mp4",
       "save_dialog_filter": "Video (*.mp4)",
       "ffmpeg_missing": "Fant ikke ffmpeg ({path}).\n\nSe COMPILATION.md, avsnittet «Videoeksport»: forventet binærfil er packaging/bin/ffmpeg.exe.",
       "export_failed": "Eksport mislyktes:\n{error}",
-      "export_success": "Video eksportert uten problemer ({frames} bilder, {width}×{height} @ {fps} fps):\n{path}"
+      "export_success": "Video eksportert uten problemer ({frames} bilder, {width}×{height} @ {fps} fps):\n{path}",
+      "resolution_too_large": "Oppløsningen {width}×{height} er for høy: dette grafikkortet støtter maks {max}px per side. Velg en lavere oppløsning.",
+      "resize_failed": "Kunne ikke forberede eksporten i denne oppløsningen: {error}",
+      "restore_resolution_failed": "Advarsel: kunne ikke gjenopprette den forrige forhåndsvisningsoppløsningen etter eksporten: {error}"
     },
     "export_progress": {
       "title": "Eksporter en video (MP4)",
@@ -209,7 +261,9 @@
       "shadertoy_api_key": "Shadertoy API-nøkkel",
       "shadertoy_api_key_placeholder": "(tom = spørres på nytt ved neste import)",
       "language": "Språk",
-      "language_restart_notice": "Språkendringen trer i kraft neste gang applikasjonen startes."
+      "language_restart_notice": "Språkendringen trer i kraft neste gang applikasjonen startes.",
+      "autosave_enabled": "Automatisk sikkerhetskopiering",
+      "autosave_interval_minutes": "Sikkerhetskopieringsintervall"
     },
     "shortcuts": {
       "title": "Tastatursnarveier",
@@ -227,7 +281,10 @@
       "face_row": "Side {face}",
       "choose_face_image": "Velg et bilde for siden",
       "missing_faces_title": "Cubemap",
-      "missing_faces_body": "Alle 6 sider må fylles ut."
+      "missing_faces_body": "Alle 6 sider må fylles ut.",
+      "file_not_found_body": "Fant ikke fil for side(r): {faces}.",
+      "face_not_square": "Side {face}: {width}x{height} — en cubemap-side må være kvadratisk.",
+      "face_size_mismatch": "Side {face}: {size}x{size}, forventet {expected}x{expected} (som de andre allerede valgte sidene)."
     },
     "slider_bounds": {
       "title": "Grenser for glidebryter",
@@ -235,6 +292,12 @@
       "max": "Maks",
       "decimals": "Desimaler",
       "menu_edit": "Rediger min / maks…"
+    },
+    "keyframe_curve": {
+      "title": "Interpolasjonskurve",
+      "linear": "Lineær",
+      "ease": "Myk (ease)",
+      "step": "Trinn"
     },
     "color_picker": {
       "title": "Velg en farge"
@@ -254,7 +317,23 @@
     },
     "ichannel_error": {
       "title": "iChannel"
-    }
+    },
+    "ichannel_drop_rejected": {
+      "title": "Filtype ikke støttet",
+      "body": "Denne filen ({extension}) er ikke et støttet bilde-, video- eller lydformat for en iChannel.",
+      "no_extension": "uten filtype"
+    },
+    "crash_recovery": {
+      "title": "Gjenopprette ulagret arbeid?",
+      "body": "Programmet ble ikke lukket normalt. En automatisk sikkerhetskopi fra {timestamp} er tilgjengelig: gjenopprette den?",
+      "restore_button": "Gjenopprett",
+      "discard_button": "Forkast"
+    },
+    "gpu_error": {
+      "title": "Grafikkortet støttes ikke",
+      "body": "Kunne ikke starte: fant ikke noe kompatibelt grafikkort på denne datamaskinen.\n\nPrøv å oppdatere driverne for grafikkortet, og start deretter programmet på nytt.\n\nTeknisk detalj: {error}"
+    },
+    "viewport_resize_error": "Forhåndsvisningen ble ikke endret i størrelse (utilstrekkelig grafikkminne): {error}"
   },
   "sliders_panel": {
     "filter_placeholder": "Filtrer…",
@@ -278,6 +357,7 @@
     ],
     "add_keyframe_menu": "Legg til et nøkkelbilde (t={time}s)",
     "clear_keyframes_menu": "Fjern nøkkelbilder",
+    "edit_curve_menu": "Interpolasjonskurve…",
     "add_keyframe_tooltip": "Legg til et nøkkelbilde ved gjeldende tid (t={time}s)",
     "keyframe_button_tooltip": "Klikk: legg til/oppdater ved t={time}s — høyreklikk: flere valg",
     "reset_category": "↺ Tilbakestill kategori",
@@ -290,7 +370,7 @@
   "ichannel_panel": {
     "video_filter": "Videoer (*.mp4 *.mov *.m4v *.avi *.mkv *.webm)",
     "audio_filter": "Lyd (*.mp3 *.wav *.ogg *.flac)",
-    "image_filter": "Bilder (*.png *.jpg *.jpeg *.bmp)",
+    "image_filter": "Bilder (*.png *.jpg *.jpeg *.bmp *.gif *.webp)",
     "source_empty": "Tom",
     "source_image": "Bilde (fil)",
     "source_video": "Video (fil)…",
@@ -305,6 +385,12 @@
     "change_cubemap": "Rediger sider…",
     "change_video": "Bytt video…",
     "change_audio": "Bytt lyd…",
+    "volume_tooltip": "Volum for lydinngangen (uavhengig av systemvolumet)",
+    "mute_tooltip": "Demp",
+    "procedural_scale_label": "Mønsterstørrelse",
+    "procedural_scale_tooltip": "Mønsterstørrelse (antall celler / oppløsning på støyrutenettet)",
+    "procedural_seed_label": "Frø",
+    "procedural_seed_tooltip": "Tilfeldig frø (0 = forhåndsinnstillingens standard)",
     "change_webcam": "Bytt webkamera…",
     "choose_video": "Velg en video for iChannel{index}",
     "choose_audio": "Velg en lydfil for iChannel{index}",
@@ -312,16 +398,32 @@
     "procedural_suffix": "{label} (prosedural)",
     "thumb_empty": "tom",
     "thumb_cube": "KUBE",
-    "default_webcam_tooltip": "standard webkamera"
+    "default_webcam_tooltip": "standard webkamera",
+    "source_lost_tooltip": "Kilden gikk tapt: {message}"
   },
   "footer": {
     "fps": "FPS: {fps}",
+    "resolution": "{width}×{height} ({percent}%)",
+    "resolution_tooltip": "Faktisk gjengivelsesoppløsning brukt av forhåndsvisningen, uavhengig av vindusstørrelsen.",
+    "render_scale_tooltip": "Gjengivelsesskala for forhåndsvisning (senk den for å holde det flytende på en tung shader)",
     "ready": "Klar",
     "compile_ok": "Kompilert OK",
     "compile_error": "Feil: {message}",
     "frame_time_tooltip": "Rendringstid per bilde (rød stolpe = tregere enn ~30 FPS)",
     "size_tooltip": "Rå størrelse og estimert gzip-størrelse (en tilnærming av størrelsen som faktisk overføres/lagres) før/etter golfing. Markøren (< 2 KB / < 4 KB / < 8 KB) tilsvarer de tradisjonelle demoscene 4k/8k-terskelverdiene, basert på den golfede rå størrelsen — ikke en nettbasert sammenligning mot en ekstern poengsum.",
     "size_format": "{before} -> {after} byte (-{percent}%) | gzip {before_gz} -> {after_gz}{tier_suffix}",
-    "size_tier": "< {kb} KB"
+    "size_tier": "< {kb} KB",
+    "size_tier_approaching": "nær {kb} KB",
+    "dialect_shadertoy": "Shadertoy",
+    "dialect_glsl": "GLSL",
+    "dialect_wgsl": "WGSL",
+    "dialect_tooltip": "Modus {mode}, oppdaget via {signal}",
+    "dialect_signal_mainimage": "tilstedeværelse av mainImage()",
+    "dialect_signal_voidmain": "tilstedeværelse av void main()",
+    "dialect_signal_version": "tilstedeværelse av #version",
+    "dialect_signal_fragcolor": "tilstedeværelse av gl_FragColor",
+    "dialect_signal_wgslentrypoint": "tilstedeværelse av et WGSL-inngangspunkt @fragment fn",
+    "dialect_signal_wgsluniformorgeneric": "tilstedeværelse av var<uniform> eller en generisk WGSL-type",
+    "dialect_signal_none": "forrige modus beholdt (ingen signal oppdaget)"
   }
 }
