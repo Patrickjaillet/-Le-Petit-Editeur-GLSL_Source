@@ -45,8 +45,9 @@ const RESERVED: &[&str] = &[
 /// Pipeline order recap (see `golf_shader_impl`/`golf_common`): comments
 /// stripped → optional dead-code elimination (`remove_unused_functions`,
 /// then — same `dead_code` toggle — `inline_single_call_functions`,
-/// inlining every top-level function called exactly once and reducible to
-/// a single `return EXPR;`) → optional renaming → literal
+/// inlining every top-level, non-recursive function reducible to a single
+/// `return EXPR;`, regardless of how many times it's called — every call
+/// site gets its own substituted copy of the body) → optional renaming → literal
 /// shortening/whitespace collapse → `strip_default_in_qualifier` (drops the
 /// redundant `in` parameter qualifier, GLSL's own default) → `simplify_algebra`
 /// (turns `i+=1.`/`i=i+1.` into `i++`) → `golf_for_loops` (this section: recognizes
@@ -1652,18 +1653,91 @@ fn cond_has_unsafe_top_level_operator(cond: &[AlgTok]) -> bool {
     false
 }
 
-/// If the tokens starting at `if_idx` (already checked by the caller to be
-/// the keyword `if`) form the exact shape `if(COND)NAME=X;else NAME=Y;` —
-/// the de-braced form `strip_redundant_braces` (which this pass always runs
-/// after, see `golf_shader_impl`) already produces from
-/// `if(COND){NAME=X;}else{NAME=Y;}` — returns the rewritten
-/// `NAME=COND?X:Y;` text plus the index right after the matched range.
-/// Returns `None` on anything short of an exact match: a multi-statement
-/// or non-assignment branch, mismatched assignment targets, a branch
-/// containing a function call (`parse_simple_ternary_assign`'s job via
-/// `is_ternary_branch_tok`), or a condition unsafe to relocate as-is
-/// (`cond_has_unsafe_top_level_operator`).
-fn try_rewrite_if_else_ternary(toks: &[AlgTok], if_idx: usize) -> Option<(String, usize)> {
+/// Maximum recursion depth used when composing nested/chained `if`/`else`
+/// into a single ternary expression (see `parse_ternary_branch`/
+/// `try_rewrite_if_else_ternary_inner` below) — purely a defensive cap
+/// against pathological input, never a correctness requirement: each
+/// recursive step consumes one whole `if(...)...else...;` statement from
+/// the *original* token stream before recursing further, so recursion is
+/// already naturally bounded by the size of the source and can never loop.
+/// This constant only protects the native call stack against absurdly deep
+/// synthetic nesting; realistic shader code never comes close to it.
+const MAX_TERNARY_NEST_DEPTH: u32 = 32;
+
+/// Parses one *branch* of an `if`/`else` chain being composed into a single
+/// ternary, starting at `start` (leading whitespace skipped). A branch is
+/// either:
+/// - the base case `NAME=EXPR;`, recognised by `parse_simple_ternary_assign`
+///   exactly as before; or
+/// - while `depth > 0`, itself a full `if(COND)...else...;` statement,
+///   recursed into via `try_rewrite_if_else_ternary_inner` — this is what
+///   lets a nested `if` sitting *inside* a then-branch (`if(p){if(q)a=1.;
+///   else a=2.;}else a=3.;`) and an `else if` chain (`if(a)x=1.;else
+///   if(b)x=2.;else x=3.;`) both fold into one expression instead of only
+///   the innermost pair.
+///
+/// Crucially, this recurses on the **original, unconverted** token
+/// stream — never on already-produced `?:` text — so there is never a need
+/// to tell a previously-produced well-formed ternary apart from an
+/// unrelated stray `?`/`:` token. That ambiguity (see the older revision of
+/// this file's doc comments) is exactly what used to cap this pass at a
+/// single, non-composing scan; driving the nesting from the parser instead
+/// of by re-scanning output sidesteps it entirely, because a `?`/`:` is
+/// only ever produced here, by this same recursive descent, never read back
+/// in as input.
+///
+/// Returns `(target_name, expr_text, index_right_after_the_branch)` on
+/// success. Every existing guard (a multi-statement or non-assignment
+/// branch, a branch containing a function call, mismatched assignment
+/// targets, a condition unsafe to relocate as-is) still applies — at every
+/// nesting level, not just the outermost, because each level is parsed by
+/// the very same `try_rewrite_if_else_ternary_inner` that enforced them
+/// before this ticket.
+fn parse_ternary_branch(toks: &[AlgTok], start: usize, depth: u32) -> Option<(String, String, usize)> {
+    let ws_start = skip_ws(toks, start);
+    if depth > 0 && matches!(toks.get(ws_start), Some(AlgTok::Ident(kw)) if kw == "if") {
+        if let Some((name, cond, then_expr, else_expr, end)) =
+            try_rewrite_if_else_ternary_inner(toks, ws_start, depth - 1)
+        {
+            return Some((name, format!("{}?{}:{}", cond, then_expr, else_expr), end));
+        }
+        // Not a composable if/else at this position (no matching `else`,
+        // an unsafe condition, mismatched targets, a multi-statement
+        // branch...) — fall through to the plain-assignment parse below,
+        // which will also fail (the reserved word `if` is never a valid
+        // start of `NAME=EXPR;`), correctly propagating `None` rather than
+        // silently treating a malformed nested `if` as ordinary branch
+        // content.
+    }
+    let assign = parse_simple_ternary_assign(toks, start)?;
+    let expr_text = render_alg_toks(&toks[assign.expr_start..assign.expr_end]);
+    Some((assign.name, expr_text, assign.stmt_end))
+}
+
+/// Core recursive step behind ternary composition: parses `if(COND)THEN;
+/// else ELSE;` at `if_idx` (already known to be the keyword `if`), where
+/// `THEN`/`ELSE` are each, via `parse_ternary_branch`, either a simple
+/// `NAME=EXPR;` or — while `depth` budget remains — another full
+/// `if`/`else` folded in recursively. Returns the common target name, the
+/// condition text, the composed then/else expression text, and the index
+/// right after the whole statement.
+///
+/// Every guard from the original non-composing version applies identically
+/// at every nesting level: `cond_has_unsafe_top_level_operator` on this
+/// level's own condition, matching assignment targets between this level's
+/// two branches (`then_name != else_name` rejected, exactly as before —
+/// composition only ever links branches that already agree on `NAME` at
+/// each level; nothing new is required to keep the whole chain internally
+/// consistent, since a mismatch at *any* level already fails that level's
+/// own parse and the caller correctly treats the branch as non-composable).
+/// `contains_if_without_else` stays as an extra defensive net even though
+/// recursion can never itself produce a dangling `if` (each nested `if`
+/// only composes once its own `else` is confirmed present).
+fn try_rewrite_if_else_ternary_inner(
+    toks: &[AlgTok],
+    if_idx: usize,
+    depth: u32,
+) -> Option<(String, String, String, String, usize)> {
     let j = skip_ws(toks, if_idx + 1);
     if !matches!(toks.get(j), Some(AlgTok::Punct('('))) {
         return None;
@@ -1678,27 +1752,38 @@ fn try_rewrite_if_else_ternary(toks: &[AlgTok], if_idx: usize) -> Option<(String
         return None;
     }
 
-    let then = parse_simple_ternary_assign(toks, close_paren + 1)?;
-    let after_then = skip_ws(toks, then.stmt_end);
+    let (then_name, then_expr, then_end) = parse_ternary_branch(toks, close_paren + 1, depth)?;
+    let after_then = skip_ws(toks, then_end);
     if !matches!(toks.get(after_then), Some(AlgTok::Ident(kw)) if kw == "else") {
         return None;
     }
-    let els = parse_simple_ternary_assign(toks, after_then + 1)?;
-    if then.name != els.name {
+    let (else_name, else_expr, else_end) = parse_ternary_branch(toks, after_then + 1, depth)?;
+    if then_name != else_name {
         return None;
     }
-    // Defensive, mirroring `find_strippable_braces`'s own dangling-else
-    // guard even though it can never actually fire here: `is_ternary_branch_tok`
-    // already excludes the reserved word `if` from both branches, so
-    // neither can contain one to begin with.
-    if contains_if_without_else(toks, cond_start, els.stmt_end) {
+    if contains_if_without_else(toks, cond_start, else_end) {
         return None;
     }
 
     let cond_text = render_alg_toks(&toks[cond_start..cond_end]);
-    let x_text = render_alg_toks(&toks[then.expr_start..then.expr_end]);
-    let y_text = render_alg_toks(&toks[els.expr_start..els.expr_end]);
-    Some((format!("{}={}?{}:{};", then.name, cond_text, x_text, y_text), els.stmt_end))
+    Some((then_name, cond_text, then_expr, else_expr, else_end))
+}
+
+/// If the tokens starting at `if_idx` (already checked by the caller to be
+/// the keyword `if`) form a composable `if`/`else` — the base shape
+/// `if(COND)NAME=X;else NAME=Y;` the de-braced form `strip_redundant_braces`
+/// (which this pass always runs after, see `golf_shader_impl`) already
+/// produces from `if(COND){NAME=X;}else{NAME=Y;}`, or a chain/nesting of
+/// several such statements sharing the same `NAME` (see
+/// `parse_ternary_branch`) — returns the rewritten `NAME=COND?X:Y;` text
+/// plus the index right after the matched range. Returns `None` on anything
+/// that doesn't fit at any level: a multi-statement or non-assignment
+/// branch, mismatched assignment targets, a branch containing a function
+/// call, or a condition unsafe to relocate as-is.
+fn try_rewrite_if_else_ternary(toks: &[AlgTok], if_idx: usize) -> Option<(String, usize)> {
+    let (name, cond, then_expr, else_expr, end) =
+        try_rewrite_if_else_ternary_inner(toks, if_idx, MAX_TERNARY_NEST_DEPTH)?;
+    Some((format!("{}={}?{}:{};", name, cond, then_expr, else_expr), end))
 }
 
 /// Converts every `if(COND)NAME=X;else NAME=Y;` in `src` into
@@ -1709,24 +1794,21 @@ fn try_rewrite_if_else_ternary(toks: &[AlgTok], if_idx: usize) -> Option<(String
 /// depends on what's been decided for another, so this correctly handles
 /// any number of independent (sibling) `if`/`else` statements in one scan.
 ///
-/// A **single pass is deliberately all this does** — unlike
-/// `simplify_algebra`/`golf_for_loops`, this is not iterated to a fixed
-/// point. `is_ternary_branch_tok` excludes `?`/`:` from a branch's allowed
-/// content specifically so that a *nested* `if(p){if(q)a=1.;else
-/// a=2.;}else a=3.;` (already de-braced by `strip_redundant_braces` into
-/// `if(p)if(q)a=1.;else a=2.;else a=3.;`) only ever has its *inner*
-/// `if`/`else` converted (`if(p)a=q?1.:2.;else a=3.;`) — the outer's
-/// then-branch, now containing the freshly-produced `?`/`:`, is never
-/// itself a candidate on a later pass, by construction. This is a
-/// deliberate scope limit, not an oversight: composing the outer around an
-/// already-produced ternary (`a=p?q?1.:2.:3.;`) would be grammatically
-/// sound (C/GLSL's `?:` is right-associative on the else-arm and delimited
-/// by its own `:` on the then-arm, so no extra parentheses are needed
-/// either way), but distinguishing a previous pass's *well-formed* `?:`
-/// output from an unrelated stray `?`/`:` would need real nesting-aware
-/// parsing this file otherwise avoids everywhere else — left out of this
-/// first version, same spirit as the compound-assignment and inlining
-/// items still open elsewhere in this section of the roadmap.
+/// Nested and chained `if`/`else` targeting the same variable now compose
+/// into a single expression in one call, via `try_rewrite_if_else_ternary`'s
+/// recursive descent (`parse_ternary_branch`/
+/// `try_rewrite_if_else_ternary_inner`): a nested then-branch
+/// (`if(p){if(q)a=1.;else a=2.;}else a=3.;`, de-braced to
+/// `if(p)if(q)a=1.;else a=2.;else a=3.;`) folds to `a=p?q?1.:2.:3.;` in one
+/// pass, and so does an `else if` chain (`if(a)x=1.;else if(b)x=2.;else
+/// x=3.;` → `x=a?1.:b?2.:3.;`) — no extra parentheses are needed for either
+/// shape, since C/GLSL's `?:` is right-associative on the else-arm and
+/// delimited by its own `:` on the then-arm. A single left-to-right driver
+/// loop is still all `ternary_from_if_else` itself does — the composition
+/// happens *within* one `try_rewrite_if_else_ternary` call via recursion on
+/// the original tokens, not by iterating this outer loop to a fixed point
+/// or by re-scanning already-produced `?:` text (see `parse_ternary_branch`
+/// for why the latter would be ambiguous and is deliberately avoided).
 fn ternary_from_if_else(src: &str) -> String {
     let toks = lex_alg(src);
     let n = toks.len();
@@ -2406,22 +2488,44 @@ fn parse_inline_candidate(name: &str, decl_start: usize, decl_end: usize, decl_t
     })
 }
 
-/// Cherche dans `chars` l'unique site d'appel de `name` situé hors de
-/// l'intervalle `[decl_start, decl_end)` (la déclaration elle-même). Un
-/// appel n'est reconnu que sous sa forme la plus étroite — un identifiant
-/// non précédé d'un `.` (jamais un accès membre/swizzle), immédiatement
-/// suivi de `(` sans le moindre espace — même convention conservatrice que
-/// `find_macro_candidates` : un appel écrit avec un espace avant la
-/// parenthèse n'est simplement pas reconnu, jamais interprété à tort.
-/// Retourne `None` si l'occurrence (l'appelant a déjà vérifié qu'elle
-/// existe exactement une fois au sens du comptage brut d'identifiants)
-/// n'est finalement pas un appel sous cette forme, ou si ses parenthèses ne
-/// s'équilibrent pas — jamais un cas qu'un GLSL valide devrait produire,
-/// garde-fou strictement défensif.
-fn find_single_call_site(chars: &[char], name: &str, decl_start: usize, decl_end: usize) -> Option<(usize, usize, usize)> {
+/// Cherche dans `chars` **tous** les sites d'appel de `name` situés hors de
+/// l'intervalle `[decl_start, decl_end)` (la déclaration elle-même — donc,
+/// notamment, jamais un appel récursif niché dans le propre corps de la
+/// fonction, puisqu'il tombe par construction à l'intérieur de cet
+/// intervalle et n'est donc jamais collecté ici ; voir
+/// `inline_single_call_functions` pour comment ce fait sert de détecteur de
+/// récursivité). Un appel n'est reconnu que sous sa forme la plus étroite —
+/// un identifiant non précédé d'un `.` (jamais un accès membre/swizzle),
+/// immédiatement suivi de `(` sans le moindre espace — même convention
+/// conservatrice que `find_macro_candidates` : un appel écrit avec un
+/// espace avant la parenthèse n'est simplement pas reconnu, jamais
+/// interprété à tort. Retourne `None` dès qu'*une seule* occurrence du nom
+/// hors de la déclaration n'est finalement pas un appel sous cette forme
+/// (référencée sans être appelée — jamais sûr de continuer, même si
+/// d'autres occurrences sont de vrais appels), ou si les parenthèses d'un
+/// appel ne s'équilibrent pas — jamais un cas qu'un GLSL valide devrait
+/// produire, garde-fou strictement défensif. La liste retournée peut être
+/// vide (fonction jamais appelée) — l'appelant filtre ce cas séparément, ce
+/// n'est pas le rôle de cette fonction (dead-code elimination, pas
+/// inlining).
+///
+/// Cas limite assumé : un appel niché dans les arguments d'un autre appel
+/// au *même* nom (`foo(foo(1.))`) ne produit qu'**un seul** site ici — le
+/// scan reprend juste après la parenthèse fermante de l'appel externe, sans
+/// jamais redescendre dans ses arguments pour y chercher un site
+/// supplémentaire. Ceci n'est jamais un risque de sécurité : l'appelant
+/// (`inline_single_call_functions`) compare la taille de cette liste au
+/// comptage brut d'occurrences du nom dans tout le fichier
+/// (`usage_count`), qui, lui, voit bien les deux occurrences textuelles
+/// (`foo` externe et `foo` interne) — l'écart entre les deux comptages fait
+/// donc échouer ce garde-fou et exclut la fonction entière de l'inlining,
+/// exactement comme pour un appel récursif, plutôt que de risquer un
+/// inlining partiel ou incohérent sur ce cas non géré.
+fn find_all_call_sites(chars: &[char], name: &str, decl_start: usize, decl_end: usize) -> Option<Vec<(usize, usize, usize)>> {
     let n = chars.len();
     let mut i = 0usize;
     let mut prev_nonspace: Option<char> = None;
+    let mut sites: Vec<(usize, usize, usize)> = Vec::new();
     while i < n {
         let c = chars[i];
         if is_ident_start(c) {
@@ -2447,7 +2551,17 @@ fn find_single_call_site(chars: &[char], name: &str, decl_start: usize, decl_end
                     if depth != 0 {
                         return None;
                     }
-                    return Some((start, i, j - 1));
+                    sites.push((start, i, j - 1));
+                    // Reprend le scan juste après la parenthèse fermante de
+                    // cet appel plutôt qu'à `i+1` : les arguments de
+                    // l'appel peuvent eux-mêmes contenir des identifiants
+                    // quelconques (y compris, en théorie, un autre appel à
+                    // `name` en argument — repéré normalement au tour
+                    // suivant de la boucle principale puisque `i` reprend
+                    // bien *avant* la fin des arguments, jamais sauté).
+                    i = j;
+                    prev_nonspace = Some(')');
+                    continue;
                 }
                 return None; // référencé sans être appelé -> jamais sûr
             }
@@ -2458,33 +2572,25 @@ fn find_single_call_site(chars: &[char], name: &str, decl_start: usize, decl_end
         }
         i += 1;
     }
-    None
+    Some(sites)
 }
 
-/// Applique l'inlining de `candidate` au site d'appel `[call_name_start,
-/// args_close]` (bornes incluses, indices dans `chars`/`current`) : découpe
-/// les arguments réels par virgule de profondeur 0, substitue chaque
-/// paramètre par son argument systématiquement entre parenthèses (jamais
-/// l'inverse — voir `parse_inline_candidate`/la doc de
-/// `inline_single_call_functions` pour le raisonnement complet sur la
-/// précédence), puis remplace en une seule passe la déclaration entière
-/// (supprimée) et le site d'appel entier (remplacé par l'expression
-/// substituée). Retourne `None` sans rien modifier dès que la substitution
-/// sort du périmètre minimal : arité qui ne correspond pas (jamais censé
-/// arriver sur du GLSL valide, garde-fou défensif), ou un paramètre
-/// référencé plus d'une fois dans le corps (dupliquer l'argument serait
-/// sémantiquement sûr tant qu'il est pur, mais hors périmètre de cette
-/// première version — voir roadmap2.md).
-fn inline_at_call_site(
-    current: &str,
-    chars: &[char],
-    candidate: &InlineCandidate,
-    call_name_start: usize,
-    args_open: usize,
-    args_close: usize,
-) -> Option<String> {
-    let args_src: String = chars[args_open + 1..args_close].iter().collect();
-    let arg_toks = lex_alg(&args_src);
+/// Calcule, pour **un seul** site d'appel de `candidate`, le texte de
+/// remplacement entièrement substitué et correctement parenthésé, à partir
+/// du texte source brut de sa liste d'arguments (`args_src`, le texte entre
+/// les parenthèses de cet appel précis). Factorisé hors de
+/// `inline_at_call_sites` parce que cette étape est strictement locale à un
+/// site — la découpe et la substitution des arguments d'un appel n'ont rien
+/// à voir avec celles d'un autre site du même appelant — alors que le
+/// garde-fou "paramètre référencé plus d'une fois dans le corps" qui suit
+/// juste après, lui, ne dépend que du corps de la fonction (identique à
+/// chaque site) : voir `inline_single_call_functions` pour pourquoi il
+/// reste hors périmètre indépendamment du nombre de sites en train d'être
+/// inlinés. Retourne `None` sur une arité incohérente (jamais censé arriver
+/// sur du GLSL valide, garde-fou défensif) ou sur ce garde-fou de
+/// duplication de paramètre.
+fn substitute_call(candidate: &InlineCandidate, args_src: &str) -> Option<String> {
+    let arg_toks = lex_alg(args_src);
 
     let mut args: Vec<String> = Vec::new();
     if candidate.params.is_empty() {
@@ -2552,19 +2658,48 @@ fn inline_at_call_site(
     // (`is_single_atomic_token`/`is_fully_parenthesized`) — gain net
     // toujours très largement positif malgré ça, la déclaration entière
     // (type de retour, nom, liste de paramètres typée, accolades,
-    // `return`/`;`) disparaissant intégralement en échange.
+    // `return`/`;`) disparaissant intégralement en échange, **à chaque**
+    // site d'appel désormais — pas seulement l'unique site de la première
+    // version de cette passe.
     let trimmed = out_body.trim();
     let final_expr = if is_single_atomic_token(trimmed) || is_fully_parenthesized(trimmed) {
         trimmed.to_string()
     } else {
         format!("({trimmed})")
     };
+    Some(final_expr)
+}
 
-    let call_end = args_close + 1; // inclut le `)` fermant
-    let mut edits: Vec<(usize, usize, Option<String>)> = vec![
-        (candidate.decl_start, candidate.decl_end, None),
-        (call_name_start, call_end, Some(final_expr)),
-    ];
+/// Applique l'inlining de `candidate` à **tous** ses sites d'appel
+/// `call_sites` (chacun `[call_name_start, args_close]`, bornes incluses,
+/// indices dans `chars`/`current`) en une seule passe atomique : chaque
+/// site reçoit sa propre copie du corps, substituée avec ses propres
+/// arguments (deux appels `foo(a)`/`foo(b)` ne partagent rien après
+/// inlining, exactement comme si le corps avait été copié-collé à la main
+/// à chaque endroit) — puis la déclaration entière est supprimée une seule
+/// fois. Les édits (une suppression, N remplacements) sont collectés
+/// d'abord, triés par position, puis appliqués en un seul passage sur
+/// `chars` — même technique que `inline_at_call_site` utilisait déjà pour
+/// son couple décl+unique-appel, généralisée ici à N+1 édits disjoints (les
+/// sites d'appel ne se chevauchent jamais entre eux ni avec la déclaration,
+/// par construction de `find_all_call_sites`). Retourne `None` sans rien
+/// modifier dès qu'*un seul* site échoue sa substitution
+/// (`substitute_call`) — tout ou rien, jamais un inlining partiel qui
+/// laisserait la déclaration supprimée sans que tous ses appels aient été
+/// remplacés.
+fn inline_at_call_sites(
+    current: &str,
+    chars: &[char],
+    candidate: &InlineCandidate,
+    call_sites: &[(usize, usize, usize)],
+) -> Option<String> {
+    let mut edits: Vec<(usize, usize, Option<String>)> = vec![(candidate.decl_start, candidate.decl_end, None)];
+    for &(call_name_start, args_open, args_close) in call_sites {
+        let args_src: String = chars[args_open + 1..args_close].iter().collect();
+        let final_expr = substitute_call(candidate, &args_src)?;
+        let call_end = args_close + 1; // inclut le `)` fermant
+        edits.push((call_name_start, call_end, Some(final_expr)));
+    }
     edits.sort_by_key(|(s, ..)| *s);
 
     let mut out = String::with_capacity(current.len());
@@ -2582,13 +2717,13 @@ fn inline_at_call_site(
     Some(out)
 }
 
-/// Inline chaque fonction top-level appelée exactement une fois dans tout
-/// `src`, quand elle rentre dans le périmètre minimal décrit dans
+/// Inline chaque fonction top-level, quel que soit son nombre de sites
+/// d'appel, quand elle rentre dans le périmètre minimal décrit dans
 /// roadmap2.md — la technique la plus payante de Shader Minifier sur les
-/// gros shaders (une fonction utilitaire appelée une seule fois n'a aucune
-/// raison de garder sa déclaration séparée), mais aussi la plus risquée des
-/// passes structurelles de ce fichier, pour des raisons de portée que ce
-/// golfer, purement textuel, ne modélise pas.
+/// gros shaders (une fonction utilitaire n'a aucune raison de garder sa
+/// déclaration séparée, qu'elle serve une fois ou dix), mais aussi la plus
+/// risquée des passes structurelles de ce fichier, pour des raisons de
+/// portée que ce golfer, purement textuel, ne modélise pas.
 ///
 /// Éligibilité d'une fonction (voir `parse_inline_candidate` pour le détail
 /// exact de chaque condition) :
@@ -2596,41 +2731,52 @@ fn inline_at_call_site(
 /// - type de retour non-`void` ;
 /// - corps réduit à une unique instruction `return EXPR;` (aucune
 ///   déclaration locale à shadow, aucun `return` anticipé) ;
-/// - appelée **exactement une fois** dans tout `src` — vérifié en amont par
-///   un comptage brut d'occurrences du nom (`usage_count == 2` : la
-///   déclaration elle-même, plus ce site d'appel). Ce même comptage exclut
-///   gratuitement la récursivité : un appel récursif ferait apparaître le
-///   nom une troisième fois, dans son propre corps ;
+/// - appelée **au moins une fois** dans tout `src`, et jamais
+///   récursivement — vérifié par construction plutôt que par un simple
+///   seuil sur un comptage brut : `find_all_call_sites` ne collecte que les
+///   occurrences du nom *situées hors de la déclaration elle-même*, donc un
+///   éventuel appel récursif (niché dans le corps de la fonction) n'y
+///   apparaît jamais. Comparer ensuite `usage_count(nom)` (comptage brut,
+///   déclaration incluse) à `call_sites.len() + 1` détecte exactement ce
+///   cas : à l'unique occurrence de la déclaration s'ajoutent les N sites
+///   d'appel externes collectés, sans reste — un reste non nul ne peut
+///   provenir que d'une occurrence supplémentaire *à l'intérieur* de la
+///   déclaration, donc d'un appel récursif, et fait échouer l'égalité,
+///   excluant la fonction. Se réduit exactement à l'ancien garde-fou
+///   `usage_count == 2` quand `call_sites.len() == 1` (le cas de la
+///   première version de cette passe) ;
 /// - chaque paramètre substitué texte-pour-texte par l'expression d'appel
 ///   réelle, systématiquement entre parenthèses (`foo(a+b)` avec `float
 ///   foo(float x){return x*2.;}` devient `(a+b)*2.` et non `a+b*2.` —
-///   jamais l'inverse, voir `inline_at_call_site`), et jamais dupliqué :
-///   un paramètre référencé plus d'une fois dans le corps rend la fonction
-///   entière inéligible à ce site (arithmétique gain/risque défavorable
-///   dès qu'un argument volumineux se répète, explicitement hors périmètre
-///   de cette première version).
+///   jamais l'inverse, voir `substitute_call`), et jamais dupliqué : un
+///   paramètre référencé plus d'une fois dans le corps rend la fonction
+///   entière inéligible, à tous ses sites d'appel (arithmétique
+///   gain/risque défavorable dès qu'un argument volumineux se répète,
+///   explicitement hors périmètre de cette passe — propriété du corps
+///   seul, donc vérifiée une fois pour tous les sites par
+///   `substitute_call`, jamais site par site).
 ///
-/// Explicitement hors périmètre (voir roadmap2.md) : fonctions appelées
-/// plusieurs fois, corps à plus d'une instruction, tableaux (type de
-/// retour ou paramètre), et **jamais appelée sur `Common`** — même mise en
-/// garde que `remove_unused_functions` (dont ce commentaire reprend
-/// l'argument) : une fonction déclarée par Common peut être appelée par une
-/// pass qui n'est pas celle en cours de golfage, "un seul site d'appel"
-/// n'est donc jamais une propriété sûre à vérifier sur le texte de Common
-/// isolément.
+/// Explicitement hors périmètre (voir roadmap2.md) : corps à plus d'une
+/// instruction, tableaux (type de retour ou paramètre), et **jamais
+/// appelée sur `Common`** — même mise en garde que `remove_unused_functions`
+/// (dont ce commentaire reprend l'argument) : une fonction déclarée par
+/// Common peut être appelée par une pass qui n'est pas celle en cours de
+/// golfage, le compte total de ses sites d'appel n'est donc jamais une
+/// propriété sûre à établir sur le texte de Common isolément.
 ///
 /// Itère jusqu'à point fixe (plafonné à 10 tours, même discipline que
 /// `remove_unused_functions`) : inliner une fonction peut rendre une autre
 /// fonction — qui l'appelait dans son propre corps `return` — elle-même
-/// nouvellement éligible si elle n'avait, elle, qu'un seul site d'appel
-/// (chaîne A appelle B une fois, B appelle C une fois : B s'inline dans A,
-/// puis C — toujours appelée une fois, son unique site d'appel se trouvant
-/// simplement déplacé dans le corps de A après la première itération — est
-/// à son tour repérée au tour suivant). Chaque tour ne réapplique qu'une
-/// seule substitution avant de tout re-scanner depuis zéro : les positions
-/// calculées par `find_top_level_declarations`/`find_single_call_site`
-/// portent sur le texte *avant* l'édition, donc plus sûres à invalider
-/// entièrement qu'à essayer de corriger en place.
+/// nouvellement éligible si tous ses appels restants pointent maintenant
+/// vers des sites valides (chaîne A appelle B deux fois, B appelle C une
+/// fois : B s'inline dans A à ses deux sites, puis C — son unique site
+/// d'appel se trouvant simplement déplacé dans le corps de A après la
+/// première itération — est à son tour repérée au tour suivant). Chaque
+/// tour ne réapplique qu'une seule fonction (à tous ses sites à la fois)
+/// avant de tout re-scanner depuis zéro : les positions calculées par
+/// `find_top_level_declarations`/`find_all_call_sites` portent sur le texte
+/// *avant* l'édition, donc plus sûres à invalider entièrement qu'à essayer
+/// de corriger en place.
 fn inline_single_call_functions(src: &str) -> String {
     let mut current = src.to_string();
     for _ in 0..10 {
@@ -2657,20 +2803,20 @@ fn inline_single_call_functions(src: &str) -> String {
             if decl_is_struct(&decl_text) {
                 continue;
             }
-            if usage_count.get(&decl.name).copied().unwrap_or(0) != 2 {
-                continue;
-            }
             let Some(candidate) = parse_inline_candidate(&decl.name, decl.start, decl.end, &decl_text) else {
                 continue;
             };
-            let Some((call_name_start, args_open, args_close)) =
-                find_single_call_site(&chars, &candidate.name, decl.start, decl.end)
-            else {
-                continue;
+            let Some(call_sites) = find_all_call_sites(&chars, &candidate.name, decl.start, decl.end) else {
+                continue; // une occurrence référencée sans être appelée -> jamais sûr
             };
-            let Some(new_src) =
-                inline_at_call_site(&current, &chars, &candidate, call_name_start, args_open, args_close)
-            else {
+            if call_sites.is_empty() {
+                continue; // jamais appelée : l'affaire de remove_unused_functions, pas de cette passe
+            }
+            let expected_usage = call_sites.len() + 1;
+            if usage_count.get(&decl.name).copied().unwrap_or(0) != expected_usage {
+                continue; // occurrence en trop non comptée -> appel récursif dans le corps
+            }
+            let Some(new_src) = inline_at_call_sites(&current, &chars, &candidate, &call_sites) else {
                 continue;
             };
             current = new_src;
@@ -4423,10 +4569,18 @@ mod strip_redundant_braces_tests {
         // frequency-weighted renamer must instead give `a` to `helper`
         // (the identifier with the most occurrences overall, definition
         // included), matching Shader Minifier's approach. Both functions
-        // are called more than once so `inline_single_call_functions`
-        // (which would otherwise remove a single-call function entirely,
-        // leaving nothing here to rename) never fires on either.
-        let src = "float first(){return 1.;}\nfloat helper(){return 2.;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(first()+first()+helper()+helper()+helper()+helper());\n}";
+        // have a leading empty statement (`;`) before their `return`, so
+        // the body is two statements rather than a bare `return EXPR;` —
+        // `parse_inline_candidate` rejects them outright regardless of
+        // call count, keeping them present (and thus renameable) without
+        // relying on multi-call functions being out of
+        // `inline_single_call_functions`'s scope, which is no longer true
+        // now that this pass inlines a function at every one of its call
+        // sites, not just a lone one. A bare `;` (rather than, say, a local
+        // declaration) is used deliberately so this doesn't introduce any
+        // extra identifier that could itself skew the frequency counts
+        // this test is about.
+        let src = "float first(){;return 1.;}\nfloat helper(){;return 2.;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(first()+first()+helper()+helper()+helper()+helper());\n}";
         let golfed = golf_shader(src);
         assert!(golfed.contains("float a("), "expected `helper` (5 occurrences) to become `a`, got: {golfed}");
         assert!(golfed.contains("float b("), "expected `first` (3 occurrences) to become `b`, got: {golfed}");
@@ -4438,10 +4592,11 @@ mod strip_redundant_braces_tests {
         // the tie must be broken deterministically by first-encounter
         // order (not, say, hash-map iteration order, which would make
         // output non-reproducible across runs/platforms). Both functions
-        // are called twice (not once) so `inline_single_call_functions`
-        // never removes either of them before renaming gets a chance to
-        // run.
-        let src = "float second(){return 1.;}\nfloat first(){return 2.;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(first()+second()+first()+second());\n}";
+        // have a leading empty statement, ineligible for inlining
+        // regardless of call count (see the comment on the previous test
+        // for why this, rather than call count, is what now keeps them
+        // around to rename).
+        let src = "float second(){;return 1.;}\nfloat first(){;return 2.;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(first()+second()+first()+second());\n}";
         let golfed = golf_shader(src);
         // `second` is declared first in the source even though its name
         // suggests otherwise; both occur exactly three times (decl + two
@@ -4604,36 +4759,106 @@ mod ternary_tests {
     }
 
     #[test]
-    fn else_if_chain_outer_rejected_inner_still_converted() {
-        // The *outer* `if(c)`'s else-branch is itself another `if`, not a
-        // bare assignment — `parse_simple_ternary_assign` correctly
-        // rejects it (next token after `else` is `if`, not an identifier),
-        // so `if(c)`/`else` stays untouched. But the *inner* `if(d)a=2.;
-        // else a=3.;` is an independent, fully valid match found later in
-        // the very same left-to-right scan (same style as
-        // `find_strippable_braces`'s independently-evaluated candidates),
-        // and is correctly converted on its own.
+    fn else_if_chain_fully_composed() {
+        // The *outer* `if(c)`'s else-branch is itself another `if` — not a
+        // bare assignment for `parse_simple_ternary_assign` to match
+        // directly — but `parse_ternary_branch` recognises this shape (an
+        // `if` at the very start of a branch, matching `NAME`) and recurses
+        // via `try_rewrite_if_else_ternary_inner` on the *original* tokens
+        // instead of bailing, folding the whole `else if` chain into one
+        // expression in a single `ternary_from_if_else` call. No extra
+        // parentheses are needed around `d?2.:3.` — C/GLSL's `?:` is
+        // right-associative on the else-arm, so `c?1.:d?2.:3.` already
+        // parses as `c?1.:(d?2.:3.)`.
         assert_eq!(
             ternary_from_if_else("if(c)a=1.;else if(d)a=2.;else a=3.;"),
-            "if(c)a=1.;else a=d?2.:3.;"
+            "a=c?1.:d?2.:3.;"
         );
     }
 
     #[test]
-    fn nested_inner_if_else_converts_but_outer_deliberately_does_not() {
+    fn three_way_else_if_chain_fully_composed() {
+        // Same composition, one link longer, to confirm it isn't special-cased
+        // to exactly two levels.
+        assert_eq!(
+            ternary_from_if_else("if(a)x=1.;else if(b)x=2.;else if(c)x=3.;else x=4.;"),
+            "x=a?1.:b?2.:c?3.:4.;"
+        );
+    }
+
+    #[test]
+    fn nested_inner_if_else_composes_with_outer() {
         // `if(p){if(q)a=1.;else a=2.;}else a=3.;`, already de-braced by
         // strip_redundant_braces into `if(p)if(q)a=1.;else a=2.;else a=3.;`
-        // — the *inner* if/else (`if(q)a=1.;else a=2.;`) is a valid match
-        // on its own and gets converted; the *outer* one's then-branch,
-        // `if(q)...`, is not a bare `ident=expr;` in the original token
-        // stream this scan evaluates against, so it's correctly left as a
-        // real `if`/`else` — by design, see `ternary_from_if_else`'s own
-        // doc comment for why this scope limit is deliberate rather than a
-        // missed case.
+        // — the *inner* if/else (`if(q)a=1.;else a=2.;`) is folded first
+        // (deepest recursion bottoms out at the base `NAME=EXPR;` case),
+        // then the outer composes around it via `parse_ternary_branch`
+        // recognising the then-branch as itself a full `if`/`else`. No
+        // extra parentheses are needed around `q?1.:2.` in the *then*
+        // position either: GLSL's grammar parses the branch between `?`
+        // and its own matching `:` as a complete sub-expression, consuming
+        // the inner `?:` before the outer `:` is ever reached — verified
+        // here by round-tripping through the full pipeline in
+        // `nested_and_chained_ternary_render_correctly_via_golf_shader`
+        // below, which checks the composed shader still renders
+        // pixel-identically to the un-golfed original.
         assert_eq!(
             ternary_from_if_else("if(p)if(q)a=1.;else a=2.;else a=3.;"),
-            "if(p)a=q?1.:2.;else a=3.;"
+            "a=p?q?1.:2.:3.;"
         );
+    }
+
+    #[test]
+    fn mismatched_target_stops_composition_but_inner_still_converts_independently() {
+        // The *inner* if/else (`if(q)b=1.;else b=2.;`) composes cleanly on
+        // its own (both branches target `b`) — but composing it as the
+        // *outer*'s then-branch requires the outer's own two branches to
+        // agree on a target too, and they don't: the inner composition
+        // reports target `b`, the outer's else-branch targets `a`.
+        // `then_name != else_name` at the outer level correctly fails the
+        // whole outer composition. This does not lose the inner
+        // conversion, though: `ternary_from_if_else`'s left-to-right
+        // driver loop re-evaluates every `if` token independently, so once
+        // the outer attempt fails and its `if`/`(`/`p`/`)` are emitted
+        // literally, the scan reaches the inner `if` token on its own and
+        // converts it there — the same sibling-independence this file
+        // already relied on before composition existed (see
+        // `trailing_if_after_else_branch_never_absorbed`).
+        assert_eq!(
+            ternary_from_if_else("if(p)if(q)b=1.;else b=2.;else a=3.;"),
+            "if(p)b=q?1.:2.;else a=3.;"
+        );
+    }
+
+    #[test]
+    fn deeply_nested_composition_still_respects_max_depth_safety_cap() {
+        // A defensive sanity check on `MAX_TERNARY_NEST_DEPTH`: a chain
+        // well within the cap (10 links, `MAX_TERNARY_NEST_DEPTH` is 32)
+        // must still fully compose into a single ternary with no leftover
+        // `if`/`else`, confirming the cap is generous enough for anything
+        // realistic and doesn't itself introduce an off-by-one that would
+        // truncate composition early.
+        let mut src = String::new();
+        for i in 0..10 {
+            src.push_str(&format!("if(c{i})x={i}.;else "));
+        }
+        src.push_str("x=99.;");
+        let golfed = ternary_from_if_else(&src);
+        assert!(!golfed.contains("if("), "expected full composition, no if left in: {golfed}");
+        assert_eq!(golfed.matches('?').count(), 10, "expected exactly 10 composed levels in: {golfed}");
+    }
+
+    #[test]
+    fn nested_and_chained_ternary_render_correctly_via_golf_shader() {
+        // End-to-end through the full pipeline (braces stripped first,
+        // then this pass composes both a nested then-branch and a chained
+        // else-if into one expression), checked structurally rather than
+        // by exact renamed spelling — same style as
+        // strip_redundant_braces_tests::full_pipeline_smoke_test.
+        let src = "void mainImage(out vec4 fragColor,in vec2 fragCoord){float r;if(fragCoord.x>0.){if(fragCoord.y>0.){r=1.;}else{r=2.;}}else{r=3.;}fragColor=vec4(r);}";
+        let golfed = golf_shader(src);
+        assert!(!golfed.contains("if("), "expected the whole nested if/else gone in: {golfed}");
+        assert_eq!(golfed.matches('?').count(), 2, "expected two composed ternary levels in: {golfed}");
     }
 
     #[test]
@@ -4870,7 +5095,7 @@ mod inline_single_call_tests {
         // `a+b*2.` (wrong precedence). This pass goes one step further
         // than the illustrative text and also parenthesizes the whole
         // substituted return expression at the call site (see
-        // `inline_at_call_site`'s doc comment for why: `x*2.` isn't
+        // `substitute_call`'s doc comment for why: `x*2.` isn't
         // itself atomic, so leaving it bare could break precedence in a
         // *different* surrounding context than this one).
         let src = "float foo(float x){return x*2.;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfloat a=1.,b=2.;\nfragColor=vec4(foo(a+b));\n}";
@@ -4943,12 +5168,49 @@ mod inline_single_call_tests {
     #[test]
     fn recursive_function_never_inlined() {
         // The name occurs three times in total (declaration, the
-        // recursive self-call, and the one genuine external call), so the
-        // `usage_count == 2` gate already excludes it before any deeper
-        // check runs.
+        // recursive self-call, and the one genuine external call).
+        // `find_all_call_sites` only ever scans *outside* the declaration's
+        // own range, so the recursive self-call (nested inside the body)
+        // is never collected — only the one external call is — but the
+        // `usage_count(name) == call_sites.len() + 1` check then catches
+        // the extra, unaccounted-for occurrence (the recursive call still
+        // counted by the raw whole-file `usage_count`) and correctly
+        // excludes the function.
         let src = "float foo(float x){return x>0.?foo(x-1.):0.;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(foo(3.));\n}";
         let out = inline_single_call_functions(&strip_comments(src));
         assert!(out.contains("float foo("), "a recursive function must never be inlined (would substitute forever): {out}");
+    }
+
+    #[test]
+    fn recursive_function_never_inlined_even_with_several_external_calls() {
+        // Same recursion guard as the test above, but now with *two*
+        // external call sites rather than one — confirms the recursion
+        // check generalises correctly and doesn't accidentally rely on the
+        // old single-call assumption (`usage_count == 2`): here
+        // `call_sites.len() == 2`, so a naively-generalised gate of
+        // `usage_count == 3` would wrongly pass (whole-file `usage_count`
+        // is 4: declaration + recursive self-call + two external calls),
+        // still correctly caught by `4 != 2 + 1`.
+        let src = "float foo(float x){return x>0.?foo(x-1.):0.;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(foo(3.)+foo(5.));\n}";
+        let out = inline_single_call_functions(&strip_comments(src));
+        assert!(out.contains("float foo("), "a recursive function must never be inlined regardless of external call count: {out}");
+    }
+
+    #[test]
+    fn call_nested_in_its_own_call_never_inlined() {
+        // `foo(foo(1.))` — a call to `foo` nested inside another call to
+        // `foo` itself, rather than a recursive self-call inside the
+        // function's own *body*. `find_all_call_sites` only ever counts
+        // the outer occurrence as a site (it resumes scanning right after
+        // the outer call's closing paren, never redescending into its own
+        // arguments) while the raw whole-file `usage_count` still counts
+        // both occurrences — the mismatch between the two safely excludes
+        // the function, same mechanism as ordinary recursion, rather than
+        // risking a partial or incoherent inlining of this unhandled
+        // shape.
+        let src = "float foo(float x){return x+1.;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(foo(foo(1.)));\n}";
+        let out = inline_single_call_functions(&strip_comments(src));
+        assert!(out.contains("float foo("), "a call nested in its own argument list must never be inlined: {out}");
     }
 
     #[test]
@@ -4956,6 +5218,36 @@ mod inline_single_call_tests {
         let src = "float foo(float x){return x*x;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(foo(1.));\n}";
         let out = inline_single_call_functions(&strip_comments(src));
         assert!(out.contains("float foo("), "a parameter used more than once in the body must never be duplicated by inlining: {out}");
+    }
+
+    #[test]
+    fn repeated_parameter_in_body_never_inlined_at_any_call_site() {
+        // Same guard as the test above, but with the function called
+        // twice: the "parameter used more than once" property belongs to
+        // the body alone (checked once by `substitute_call`, reused for
+        // every site), so it must block *all* of this function's call
+        // sites at once, not just the first one it happens to be tried at
+        // — `inline_at_call_sites` is all-or-nothing by construction (a
+        // single `?` failure inside its per-site loop propagates out via
+        // `?` before any edit is committed).
+        let src = "float foo(float x){return x*x;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(foo(1.)+foo(2.));\n}";
+        let out = inline_single_call_functions(&strip_comments(src));
+        assert!(out.contains("float foo("), "a parameter used more than once in the body must never be duplicated at any call site: {out}");
+        assert_eq!(out.matches("foo(").count(), 2, "expected both original call sites left completely untouched: {out}");
+    }
+
+    #[test]
+    fn bare_reference_among_several_calls_blocks_inlining_entirely() {
+        // `foo` is genuinely called twice, but also referenced a third
+        // time without being called (e.g. accidentally shadowed by a local
+        // variable of the same name — contrived, but exactly the "never
+        // safe" shape `find_all_call_sites` must bail out on). Even though
+        // two of the three occurrences *are* well-formed calls, the
+        // presence of the third, non-call occurrence must abort the whole
+        // function — never a partial inlining of just the genuine calls.
+        let src = "float foo(float x){return x*2.;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfloat y=foo(1.)+foo(2.);\nfloat foo=3.;\nfragColor=vec4(y+foo);\n}";
+        let out = inline_single_call_functions(&strip_comments(src));
+        assert!(out.contains("float foo("), "a bare (non-call) reference anywhere must block inlining entirely, even alongside genuine calls: {out}");
     }
 
     #[test]
@@ -4997,6 +5289,55 @@ mod inline_single_call_tests {
         let out = inline_single_call_functions(&strip_comments(src));
         assert!(!out.contains("float c("), "expected the innermost single-call function gone too: {out}");
         assert!(!out.contains("float b("), "expected the outer single-call function gone: {out}");
+    }
+
+    #[test]
+    fn function_called_several_times_is_now_inlined_at_every_site() {
+        // The ticket this test is for: a function is no longer required to
+        // have exactly one call site. `dbl` is called three times, each
+        // with a different argument — each call site must get its own
+        // independently-substituted copy of the body, and the declaration
+        // must disappear exactly once. (Named `dbl`, not `double`: the
+        // latter is itself a reserved GLSL type keyword, see `RESERVED`.)
+        let src = "float dbl(float x){return x*2.;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(dbl(1.)+dbl(2.)+dbl(3.));\n}";
+        let out = inline_single_call_functions(&strip_comments(src));
+        assert!(!out.contains("float dbl("), "expected the declaration gone: {out}");
+        assert!(!out.contains("dbl("), "expected every call site substituted, none left calling `dbl`: {out}");
+        // Each parameter is wrapped in its own parens, then the whole
+        // substituted body is wrapped again since `(1.)*2.` isn't itself
+        // atomic/fully-parenthesized — same systematic double-wrap as
+        // `basic_single_param_inlined_with_systematic_parens` above,
+        // just repeated independently at three different call sites here.
+        for expected in ["((1.)*2.)", "((2.)*2.)", "((3.)*2.)"] {
+            assert!(out.contains(expected), "expected call site substituted with its own argument ({expected}) in: {out}");
+        }
+    }
+
+    #[test]
+    fn multi_call_function_with_two_params_substitutes_each_site_independently() {
+        // Confirms substitution is fully per-site even with more than one
+        // parameter: each call's own two arguments must land in its own
+        // copy of the body, never mixed up with the other call's.
+        let src = "float add(float a,float b){return a+b;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(add(1.,2.)+add(3.,4.));\n}";
+        let out = inline_single_call_functions(&strip_comments(src));
+        assert!(!out.contains("float add("), "expected the declaration gone: {out}");
+        assert!(out.contains("((1.)+(2.))"), "expected the first call's own arguments substituted together: {out}");
+        assert!(out.contains("((3.)+(4.))"), "expected the second call's own arguments substituted together: {out}");
+    }
+
+    #[test]
+    fn chain_collapses_with_multi_call_link() {
+        // A chain where the *middle* function is itself called more than
+        // once from the outer one: `b` is called twice inside `a`, and `b`
+        // in turn calls `c` once. All three levels must still collapse to
+        // nothing, confirming multi-call inlining composes correctly with
+        // the existing fixed-point chain-collapsing behaviour (previously
+        // only ever exercised with single-call links throughout the whole
+        // chain).
+        let src = "float c(float x){return x+1.;}\nfloat b(float y){return c(y)*2.;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(b(1.)+b(2.));\n}";
+        let out = inline_single_call_functions(&strip_comments(src));
+        assert!(!out.contains("float c("), "expected the innermost function gone: {out}");
+        assert!(!out.contains("float b("), "expected the multi-call middle function gone too: {out}");
     }
 
     #[test]

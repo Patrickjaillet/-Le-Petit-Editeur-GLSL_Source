@@ -42,7 +42,7 @@ from i18n import tr
 from shortcuts import ShortcutRegistry
 from ui.export_progress_dialog import ExportProgressDialog
 from ui.export_video_dialog import ExportVideoDialog, record_actual_export_size
-from ui.footer import RENDER_SCALE_OPTIONS, Footer
+from ui.footer import RENDER_SCALE_OPTIONS, Footer, record_golf_score
 from ui.ichannel_panel import THUMB_SIZE, IChannelPanel
 from ui.monaco_editor import MonacoEditor
 from ui.shortcuts_dialog import ShortcutsDialog
@@ -861,7 +861,18 @@ class MainWindow(QMainWindow):
             self.editor.clear_error_marker()
             self.footer.set_compile_ok()
 
-        self.footer.set_golf_sizes(source, golfed)
+        # Local golf history for this exact project+pass (see
+        # `footer.record_golf_score`'s doc comment for why this is a local
+        # personal-best tracker rather than an online leaderboard — this
+        # standalone desktop app has no backend service to compare
+        # against). A brand-new/unsaved project (`_current_project_path`
+        # still `None`) simply never accumulates history, same as
+        # `sliders_panel`'s own per-project layout keys.
+        after_bytes = len(golfed.encode("utf-8"))
+        previous_best, is_new_best = record_golf_score(
+            self._settings, self._current_project_path, self._current_tab, after_bytes,
+        )
+        self.footer.set_golf_sizes(source, golfed, previous_best, is_new_best)
         self._pre_golf_source = source
         self.editor.replace_value(golfed)
 

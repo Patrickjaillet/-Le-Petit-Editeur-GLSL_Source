@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import gzip
+import json
 from collections import deque
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QSettings, Signal
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QComboBox, QLabel, QStatusBar, QWidget
 
@@ -97,6 +98,125 @@ def golf_size_tier_html(after_bytes: int) -> str:
             text = tr("footer.size_tier_approaching", kb=limit // 1024)
             return f' | <span style="color:{_APPROACHING_COLOR}; font-weight:600;">⚠ {text}</span>'
     return ""
+
+
+# ROADMAP.md, section "Golfing" — "comparaison en ligne avec un score
+# externe" was explicitly left out ("hors périmètre, aucune API de
+# leaderboard fiable et stable à intégrer") because this app is a
+# standalone desktop editor with no backend service of its own to talk to:
+# inventing one here would mean shipping a call to a service that doesn't
+# exist. What follows instead is a **local** personal-best tracker — this
+# project's own golf history, compared against itself — which gives the
+# footer's live readout the "how does this compare" landmark the ticket
+# was actually about, without any network dependency. Persisted the same
+# way `export_video_dialog._load_calibration`/`_save_calibration` persist
+# their own per-CRF table: one `QSettings` string value.
+_SETTINGS_KEY_GOLF_BEST = "golfPersonalBests"
+
+
+def _load_golf_bests(qsettings: QSettings) -> dict[str, dict[str, int]]:
+    """`{project_path: {str(tab_id): best_bytes}}` — nested by project path
+    *and* tab/pass id, never just the project path alone: different passes
+    of the same project (Image, BufferA, Common, ...) have wildly different
+    achievable sizes, so a single flattened "best" would silently compare a
+    pass against a completely different pass's record the moment the user
+    switched tabs. Stored as JSON rather than the flat `key:value,...`
+    scheme `export_video_dialog`'s CRF table uses, because a real
+    filesystem path can itself contain `:`/`,` (a Windows drive letter, a
+    folder name with a comma) that flat scheme would silently corrupt.
+    """
+    raw = qsettings.value(_SETTINGS_KEY_GOLF_BEST, "", type=str)
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return {}  # corrupt/foreign value -- fall back to "no history" rather than crash
+    if not isinstance(data, dict):
+        return {}
+    out: dict[str, dict[str, int]] = {}
+    for path, per_tab in data.items():
+        if not isinstance(path, str) or not isinstance(per_tab, dict):
+            continue
+        clean: dict[str, int] = {
+            tab_id: size for tab_id, size in per_tab.items()
+            if isinstance(tab_id, str) and isinstance(size, int) and size > 0
+        }
+        if clean:
+            out[path] = clean
+    return out
+
+
+def _save_golf_bests(qsettings: QSettings, bests: dict[str, dict[str, int]]) -> None:
+    qsettings.setValue(_SETTINGS_KEY_GOLF_BEST, json.dumps(bests))
+
+
+def record_golf_score(
+    qsettings: QSettings, project_path: str | None, tab_id: int, after_bytes: int,
+) -> tuple[int | None, bool]:
+    """Call once a golfed byte count is known for the currently displayed
+    pass of the currently *saved* project (`project_path` is
+    `MainWindow._current_project_path`, `tab_id` is `MainWindow._current_tab`
+    — `COMMON_TAB` included, it's just another int key here), so the footer
+    can show how this run compares to the best ever recorded for this exact
+    project+pass combination.
+
+    Returns `(previous_best_or_None, is_new_best)`: the best recorded
+    *before* this call (`None` the very first time this project+pass is
+    ever golfed — nothing to compare against yet), and whether
+    `after_bytes` itself just beat that previous record. `is_new_best` is
+    always `False` on that very first call — there is nothing yet to
+    *beat*, so it is never itself counted as "new best" (distinct from a
+    tie, which is also `False`, for the same "matching a record is not an
+    improvement" reason — the two cases share the same boolean on purpose,
+    only `previous_best is None` tells them apart for a caller that needs
+    to). The byte count is still recorded either way, exactly like a tie
+    or an improvement, so the *next* call has something to compare against.
+
+    Does nothing and returns `(None, False)` for an unsaved project
+    (`project_path is None`): there's no stable key to record a best
+    under yet, same "no stable identity, no tracking" choice
+    `sliders_panel`'s own per-project layout keys already make — a project
+    only starts building golf history once it has a file path.
+    """
+    if project_path is None or after_bytes <= 0:
+        return None, False
+    bests = _load_golf_bests(qsettings)
+    per_tab = bests.get(project_path, {})
+    previous_best = per_tab.get(str(tab_id))
+    should_store = previous_best is None or after_bytes < previous_best
+    is_new_best = previous_best is not None and after_bytes < previous_best
+    if should_store:
+        per_tab = dict(per_tab)
+        per_tab[str(tab_id)] = after_bytes
+        bests = dict(bests)
+        bests[project_path] = per_tab
+        _save_golf_bests(qsettings, bests)
+    return previous_best, is_new_best
+
+
+def golf_personal_best_html(after_bytes: int, previous_best: int | None, is_new_best: bool) -> str:
+    """Small HTML suffix comparing the just-golfed size to this
+    project+pass's own local history (see `record_golf_score`) — the local
+    "leaderboard" ROADMAP.md's golfing section asks for. Three states:
+    nothing yet to compare against (`previous_best is None`, the very
+    first time this project+pass is golfed) shows nothing at all, rather
+    than a misleading "0% better than a record that doesn't exist"; beating
+    the previous best gets the same celebratory gold styling
+    `golf_size_tier_html` already uses for crossing a demoscene size tier,
+    with the exact byte improvement spelled out; matching or landing above
+    it is shown plainly in a neutral grey, since staying within a few
+    bytes of your own best golf on unrelated edits is not a regression
+    worth flagging in the tier-warning red.
+    """
+    if previous_best is None:
+        return ""
+    if is_new_best:
+        delta = previous_best - after_bytes
+        text = tr("footer.golf_best_new", delta=delta)
+        return f' | <span style="color:#4caf50; font-weight:600;">🏆 {text}</span>'
+    text = tr("footer.golf_best_existing", best=previous_best)
+    return f' | <span style="color:#9e9e9e;">{text}</span>'
 
 
 class FrameTimeGraph(QWidget):
@@ -242,7 +362,13 @@ class Footer(QStatusBar):
         self._dialect_label.setText("")
         self._dialect_label.setToolTip("")
 
-    def set_golf_sizes(self, before_text: str, after_text: str) -> None:
+    def set_golf_sizes(
+        self,
+        before_text: str,
+        after_text: str,
+        previous_best: int | None = None,
+        is_new_best: bool = False,
+    ) -> None:
         if not before_text:
             self._size_label.setText("")
             return
@@ -251,7 +377,12 @@ class Footer(QStatusBar):
         before_gz = len(gzip.compress(before_text.encode("utf-8")))
         after_gz = len(gzip.compress(after_text.encode("utf-8")))
         pct = 100.0 * (before - after) / before if before else 0.0
-        tier_suffix = golf_size_tier_html(after)
+        # `previous_best`/`is_new_best` default to a no-comparison state
+        # (`golf_personal_best_html` then renders nothing) so callers that
+        # never golfed a *saved* project yet — or that don't care about
+        # this ticket's personal-best tracking at all — keep working
+        # exactly as before this feature existed.
+        tier_suffix = golf_size_tier_html(after) + golf_personal_best_html(after, previous_best, is_new_best)
         self._size_label.setText(tr(
             "footer.size_format",
             before=before, after=after, percent=f"{pct:.0f}",
