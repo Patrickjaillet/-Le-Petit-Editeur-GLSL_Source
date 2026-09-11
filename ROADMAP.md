@@ -370,9 +370,7 @@ par ordre de rapport gain/risque :
   parle réellement le score golf ; premier palier atteint dans l'ordre croissant (`<= 2048` →
   "< 2 Ko", sinon `<= 4096` → "< 4 Ko", sinon `<= 8192` → "< 8 Ko"), et `None` (aucun repère affiché,
   plutôt qu'un repère trompeur) une fois tous les paliers dépassés — `_size_label` n'ajoute alors
-  rien au texte existant. Pas de comparaison en ligne avec un score externe (aucune API de
-  leaderboard fiable et stable à intégrer) — hors périmètre, comme prévu par ce ticket ; mentionné
-  dans le tooltip existant pour que ce choix reste visible sans avoir à lire le code.
+  rien au texte existant.
   **Vérifié** par 8 cas testés en Python pur, sans dépendance PySide6 (bornes exactes de chaque
   palier des deux côtés — 2048/2049, 4096/4097, 8192/8193 — plus `0` et le cas `521` de
   `default.frag` golfé, tous "< 2 Ko" comme attendu) : PySide6 n'est pas installé dans cet
@@ -380,6 +378,51 @@ par ordre de rapport gain/risque :
   été testée en isolation plutôt que via le widget `Footer` complet — `python3 -m py_compile` confirme
   par ailleurs que le fichier entier reste syntaxiquement valide après l'édition. Pas de vérification
   visuelle du rendu Qt (environnement sans affichage/PySide6 disponible ici).
+- [x] **Comparaison de score — suivi local du meilleur score personnel** (`python_ui/ui/footer.py`,
+  `python_ui/ui/main_window.py`, `lngs/*.json`). Une vraie comparaison *en ligne* reste hors périmètre
+  (ce logiciel est une appli desktop autonome, sans aucun backend réseau existant — en inventer un ici
+  aurait signifié livrer un appel vers un service fictif) ; ce ticket livre à la place un suivi
+  **strictement local** de l'historique golf de chaque projet, qui répond au besoin réel de
+  "comparaison de score" sans dépendance réseau. `record_golf_score(qsettings, project_path, tab_id,
+  after_bytes)` compare la taille golfée qui vient d'être produite au meilleur score jamais enregistré
+  pour **ce projet et cette pass précis** (jamais un seul total global : `_load_golf_bests` imbrique
+  par `{project_path: {str(tab_id): best_bytes}}`, puisque des passes différentes — Image, BufferA,
+  Common… — ont des tailles atteignables radicalement différentes, un seul chiffre les confondrait).
+  Persisté en JSON via `QSettings` sous la clé `golfPersonalBests` — JSON plutôt que le schéma plat
+  `clé:valeur,...` déjà utilisé par la calibration CRF de l'export vidéo, parce qu'un vrai chemin de
+  fichier peut lui-même contenir `:`/`,` (lettre de lecteur Windows, dossier avec une virgule) que ce
+  schéma plat corromprait silencieusement. Un projet non enregistré (`project_path is None`) n'accumule
+  jamais d'historique — même choix que les layouts de sliders par projet. `golf_personal_best_html`
+  affiche : rien la toute première fois qu'un projet+pass est golfé (pas de "0% mieux qu'un record qui
+  n'existe pas") ; un style doré festif 🏆 avec le delta d'octets exact en cas de nouveau record ; un
+  simple rappel gris neutre en cas d'égalité ou de régression (rester à quelques octets de son propre
+  record sur une édition sans rapport n'est pas une régression à signaler en rouge). Câblé dans
+  `MainWindow._do_golf` (le seul point qui met à jour le lecteur `_size_label` du footer — le dialogue
+  séparé "Golfer tout le projet" et son résumé multi-pass restent hors périmètre de ce ticket).
+  Clés i18n `footer.golf_best_new`/`footer.golf_best_existing` ajoutées aux 12 fichiers de `lngs/`, plus
+  une phrase ajoutée à `footer.size_tooltip` expliquant que le 🏆 est une comparaison strictement
+  locale — jamais en ligne.
+  **Bug réel trouvé et corrigé pendant l'implémentation** : `record_golf_score` renvoyait
+  `is_new_best=True` dès le tout premier score jamais enregistré pour un projet+pass (rien à battre
+  pourtant) — invisible côté UI (le garde `previous_best is None` de `golf_personal_best_html` masquait
+  le problème en amont) mais incorrect au niveau du contrat de l'API elle-même ; corrigé en distinguant
+  explicitement `should_store` (vrai dès qu'il n'y a pas encore de record, ou qu'on l'améliore) de
+  `is_new_best` (vrai uniquement en cas d'amélioration réelle d'un record *existant*).
+  **Vérifié** par `test_footer_golf_best.py` (suit le même patron `QSettings` sur `.ini` temporaire que
+  `test_export_video_dialog.py`) : projet non enregistré jamais suivi, premier score jamais compté comme
+  "nouveau record", amélioration/égalité/régression correctement distinguées et persistées, deux passes
+  ou deux projets ne partagent jamais leur historique, valeur `QSettings` corrompue ou étrangère (JSON
+  invalide, taille non entière, taille négative) dégradée silencieusement vers "aucun historique" plutôt
+  que de planter, et les trois rendus HTML de `golf_personal_best_html`. Ce fichier de test **n'a pas pu
+  être exécuté tel quel** dans cet environnement (PySide6 absent, `ModuleNotFoundError`, aucun accès
+  réseau pour l'installer) — sa logique a cependant été rejouée et vérifiée séparément via une
+  simulation en Python pur (sans PySide6, avec un faux objet `QSettings`), qui est ce qui a permis de
+  trouver le bug `is_new_best` ci-dessus avant qu'il n'atteigne le code réel. `python3 -m py_compile`
+  confirme que `footer.py`/`main_window.py` restent syntaxiquement valides après l'édition ;
+  `test_i18n_completeness.py`/`test_i18n.py` (qui, eux, n'ont pas besoin de PySide6) confirment la
+  parité des 319 clés sur les 12 langues et que les deux nouveaux appels `tr("footer.golf_best_new"/
+  "footer.golf_best_existing")` sont bien couverts. **À revalider en environnement complet** (PySide6 +
+  affichage) avant d'être considéré comme définitivement clos.
 
 - [x] Renommage des noms de `#define` objet-like (`#define NAME valeur`) au lieu de les protéger tel
   quels : `NAME` traverse maintenant le même pipeline de renommage que n'importe quel identifiant
@@ -591,8 +634,8 @@ la section précédente.
   rôle de `a`). Aucun des deux cas n'était couvert par le plan initial, qui ne parlait que du risque
   sur les branches `X`/`Y` — trouvé en écrivant les tests de non-déclenchement plutôt qu'en relisant
   le plan.
-  **Non fait volontairement, contrairement à ce que suggérait la formulation initiale du plan**
-  ("itère jusqu'à point fixe" n'a en fait pas été retenu) : un `if` imbriqué comme *unique* contenu
+  **Non fait volontairement à cette première version** (voir la mise à jour en fin de cette entrée
+  pour la levée de cette limite) : un `if` imbriqué comme *unique* contenu
   d'une branche externe (`if(p){if(q)a=1.;else a=2.;}else a=3.;`, dégolfé par `strip_redundant_braces`
   en `if(p)if(q)a=1.;else a=2.;else a=3.;`) voit son `if` **interne** converti
   (`if(p)a=q?1.:2.;else a=3.;`) mais l'**externe** délibérément laissé en `if`/`else` — pas une
@@ -626,6 +669,43 @@ la section précédente.
   environnement (même limite de lockfile), donc pas de vérification par rendu GPU pixel-identique
   cette fois non plus — seule la correction structurelle/textuelle est couverte par les tests
   ci-dessus, comme pour la plupart des entrées de cette vague "prochaine vague".
+  **Mis à jour ensuite avec la levée de la limite "non fait volontairement" ci-dessus** : la
+  composition d'un `if` imbriqué et d'une chaîne `else if` est désormais supportée en une seule
+  passe. La clé de la levée : au lieu de rescanner le texte `?:` déjà produit (l'ambiguïté citée
+  ci-dessus — distinguer un `?:` bien formé d'un `?`/`:` isolé sans rapport), la composition est
+  pilotée **par le parseur lui-même**, en récursant directement sur les tokens **originaux**, jamais
+  produits. `parse_ternary_branch` reconnaît qu'une branche est soit le cas de base `NAME=EXPR;`
+  (comme avant), soit, tant qu'un budget de profondeur reste (`MAX_TERNARY_NEST_DEPTH = 32`, un pur
+  garde-fou défensif contre une récursion pathologique — jamais une exigence de correction, puisque
+  chaque étape consomme un `if`/`else` entier du texte source, donc naturellement bornée par la
+  taille du fichier), un `if(...)...else...;` complet, récursé via
+  `try_rewrite_if_else_ternary_inner`. Comme un `?`/`:` n'est jamais réintroduit en entrée de ce même
+  mécanisme, l'ambiguïté qui bloquait la composition ne se pose simplement jamais. Tous les
+  garde-fous existants (condition sûre à relocaliser, cibles d'affectation identiques,
+  `contains_if_without_else`) s'appliquent identiquement à chaque niveau d'imbrication, pas seulement
+  au niveau externe. Aucune parenthèse supplémentaire n'est nécessaire dans un cas comme dans
+  l'autre, confirmant le raisonnement grammatical déjà noté ci-dessus (`?:` associatif à droite sur
+  sa branche `else`, délimité par son propre `:` sur sa branche `then`).
+  **2 tests existants corrigés** (`else_if_chain_outer_rejected_inner_still_converted` renommé en
+  `else_if_chain_fully_composed`, `nested_inner_if_else_converts_but_outer_deliberately_does_not`
+  renommé en `nested_inner_if_else_composes_with_outer`) puisque leurs anciennes assertions
+  vérifiaient explicitement l'ancien comportement non-composé (`if(c)a=1.;else a=d?2.:3.;` devient
+  désormais `a=c?1.:d?2.:3.;`, etc.) — plus une régression `default.frag` inchangée puisque ce shader
+  ne contient toujours aucun `if`/`else`.
+  **Vérifié** par 6 nouveaux tests : chaîne `else if` à 3 niveaux (pas seulement 2, pour confirmer
+  l'absence de cas particulier codé en dur), un cas où la composition externe échoue faute de cibles
+  d'affectation cohérentes entre les deux niveaux mais où l'`if` interne, lui, continue à se
+  convertir indépendamment lors du même balayage gauche-à-droite (comportement hérité du fichier,
+  toujours vrai même quand la composition échoue à un niveau donné), une chaîne de 10 niveaux
+  confirmant que `MAX_TERNARY_NEST_DEPTH` (32) ne tronque jamais prématurément un cas réaliste, et un
+  test bout-en-bout via `golf_shader` composant à la fois une imbrication *et* un chaînage dans le
+  même shader. **Aucune toolchain Rust disponible dans cette session** (pas d'accès réseau pour
+  réinstaller `rustc`/`cargo`) : contrairement à l'implémentation initiale ci-dessus, ce changement
+  n'a **pas** pu être compilé ni testé via `rustc --test` — vérifié uniquement par relecture manuelle
+  et par traçage à la main, token par token, des deux cas de composition sur les exemples ci-dessus
+  (confirmés donner exactement `a=c?1.:d?2.:3.;` et `a=p?q?1.:2.:3.;`, comme attendu). **À recompiler
+  et rejouer la suite de tests dans un environnement complet avant de considérer ce changement comme
+  définitivement validé.**
 - [x] **Repli de constantes purement littérales** (`2.*3.` → `6.`, uniquement quand les deux
   opérandes d'un opérateur arithmétique sont déjà des littéraux numériques après golf).
   Nouvelle règle dans `simplify_algebra_pass` (`golf.rs`), juste après le bloc existant
@@ -704,8 +784,9 @@ la section précédente.
   discipline que `remove_unused_functions`) pour que les chaînes s'effondrent entièrement (A appelle
   B une fois, B appelle C une fois : B s'inline dans A, puis C, toujours appelée une fois — son
   unique site d'appel simplement déplacé dans le corps de A — est repérée au tour suivant).
-  Explicitement **hors périmètre**, exactement comme annoncé : fonctions appelées plusieurs fois,
-  fonctions avec plus d'une instruction, paramètres répétés dans le corps, tableaux, et Common.
+  Explicitement **hors périmètre à cette première version** (voir plus bas pour la levée de la
+  première de ces exclusions) : fonctions appelées plusieurs fois, fonctions avec plus d'une
+  instruction, paramètres répétés dans le corps, tableaux, et Common.
   **Effet de bord sur deux tests préexistants** (`strip_redundant_braces_tests::
   rename_weighted_by_frequency_not_first_encounter` et `rename_frequency_ties_broken_by_first_encounter`) :
   leurs shaders de test appelaient chacun leur fonction candidate au renommage exactement une fois,
@@ -736,6 +817,50 @@ la section précédente.
   une fonction de type SDF (`sdCircle(vec2 p,float r){return length(p)-r;}`) et une fonction de
   luminance (`lum(vec3 c){return dot(c,vec3(...));}`) — confirment que la sortie golfée reste un
   GLSL syntaxiquement valide et correctement parenthésé dans les deux cas.
+  **Mis à jour ensuite avec la levée de l'exclusion "fonctions appelées plusieurs fois"** ci-dessus —
+  la technique s'applique désormais à une fonction quel que soit son nombre de sites d'appel, pas
+  seulement un unique site. `find_single_call_site` généralisé en `find_all_call_sites` (collecte
+  tous les sites, échoue proprement — `None` — dès qu'une seule occurrence du nom hors déclaration
+  n'est pas un appel sous forme reconnue) ; `inline_at_call_site` scindé en `substitute_call`
+  (calcul de la substitution pour un site, factorisé puisque le garde-fou "paramètre répété dans le
+  corps" ne dépend que du corps, pas du site) et `inline_at_call_sites` (tout-ou-rien sur l'ensemble
+  des sites d'une fonction en une seule passe d'édition). La détection de récursivité ne repose plus
+  sur `usage_count == 2` (propriété spécifique au cas à un seul appel) mais sur `usage_count(nom) ==
+  call_sites.len() + 1` : `find_all_call_sites` ne compte jamais les occurrences situées *à
+  l'intérieur* de la déclaration elle-même (donc jamais un appel récursif niché dans le corps), donc
+  tout reste non compté dans `usage_count` (qui, lui, voit bien cette occurrence) fait échouer
+  l'égalité et exclut la fonction — se réduit exactement à l'ancien garde-fou quand il n'y a qu'un
+  seul site. Cas limite assumé et testé explicitement : un appel niché dans les arguments d'un autre
+  appel au même nom (`foo(foo(1.))`) n'est jamais compté comme deux sites distincts (le scan reprend
+  après la parenthèse fermante de l'appel externe sans redescendre dans ses arguments) — l'écart avec
+  `usage_count` qui en résulte exclut alors la fonction entière, plutôt que de risquer un inlining
+  partiel ou incohérent sur ce cas non géré.
+  **Deux tests préexistants de nouveau affectés** (`rename_weighted_by_frequency_not_first_encounter`
+  et `rename_frequency_ties_broken_by_first_encounter`) : leur correctif précédent ("appeler chaque
+  fonction deux fois" pour échapper à l'ancienne exclusion single-call) ne suffit plus, puisque deux
+  appels rendent maintenant la fonction éligible à l'inlining. Corrigé différemment cette fois : les
+  corps de test commencent par une instruction vide `;` avant leur `return` (`{;return 1.;}`), qui
+  désactive l'éligibilité à l'inlining pour une tout autre raison (corps à plus d'une instruction,
+  toujours hors périmètre) sans dépendre du nombre d'appels ni introduire un nouvel identifiant qui
+  fausserait les comptages de fréquence que ces tests vérifient.
+  **Vérifié** par 8 tests supplémentaires (`inline_single_call_tests`, `golf.rs`) : fonction appelée
+  trois fois avec un argument différent à chaque site substitué indépendamment, fonction à deux
+  paramètres où chaque site garde ses propres arguments sans jamais les mélanger avec l'autre site,
+  récursivité toujours exclue même avec plusieurs sites d'appel externes (pas seulement un, comme
+  dans l'ancien test), appel niché dans son propre appel (`foo(foo(1.))`) jamais inliné, référence
+  nue (jamais appelée) parmi plusieurs appels bloquant l'inlining dans son ensemble plutôt que
+  partiellement, paramètre répété dans le corps bloquant l'inlining à *tous* les sites (pas
+  seulement le premier essayé), et chaîne de deux fonctions dont le maillon intermédiaire est
+  lui-même appelé deux fois qui s'effondre malgré tout entièrement au point fixe. **Aucune toolchain
+  Rust disponible dans cette session** (pas d'accès réseau pour réinstaller `rustc`/`cargo`, à la
+  différence de la session précédente qui avait pu les réinstaller via `apt`) : contrairement aux
+  entrées précédentes de ce fichier, ce changement n'a donc **pas** pu être compilé ni testé via
+  `rustc --test`, même en isolation — vérifié uniquement par relecture manuelle poussée du code
+  (équilibrage accolades/parenthèses/crochets hors chaînes et commentaires vérifié
+  programmatiquement, signatures de fonctions revérifiées une à une, traçage à la main token par
+  token de plusieurs cas dont celui de la composition ternaire ci-dessous) et par cohérence avec les
+  garde-fous déjà couverts par les tests existants. **À recompiler et rejouer la suite de tests dans
+  un environnement complet avant de considérer ce changement comme définitivement validé.**
 
 ---
 
@@ -1662,4 +1787,4 @@ constantes purement littérales, `2.*3.` → `6.`, restreint aux opérandes enti
 pour rester bit-exact avec l'arithmétique `f32` du pilote GPU cible) : il ne reste donc plus qu'un
 seul item de cette vague, le plus risqué (inlining des fonctions à site d'appel unique).
 
-*Généré à partir d'une lecture du contenu de `petitediteurglsl.zip` : `rust_engine/src/{golf,literals,shader,renderer,texture,lib}.rs` et `python_ui/{main.py,engine_bridge.py,local_server.py,ui/*.py}`. Mis à jour après la refonte "sliders détectés automatiquement, zéro syntaxe custom", puis après l'ajout des sections golf avancé (🏆) et export vidéo .mp4 (🎬) — la section golf avancé est entièrement implémentée et testée, y compris le renommage pondéré par fréquence. Mis à jour ensuite avec l'import direct depuis Shadertoy (nouveau module `python_ui/shadertoy_import.py`), dont la partie "convention de nommage des faces de cubemap" reste une implémentation best-effort faute d'accès réseau sortant vers shadertoy.com dans l'environnement de développement. Mis à jour ensuite avec la boucle de capture image par image de l'export vidéo (nouveau `python_ui/video_export.py`, testé via un `Engine` factice faute de toolchain Rust dans cet environnement) : le reste de la section 🎬 (dialogue d'export, barre de progression, invocation `ffmpeg`, empaquetage, CLI batch) reste un plan détaillé, non encore implémenté. Ajout d'une nouvelle vague "Golf avancé — prochaine vague" (affectation composée généralisée, splat de constructeur de vecteur, suppression du qualificatif `in`, ternaire depuis un `if`/`else` à affectation unique, repli de constantes littérales exactes, inlining des fonctions à site d'appel unique) : plan détaillé classé par gain/risque comme le reste de cette section. Implémentation de son premier item, l'affectation composée généralisée (`x=x OP atomic;`→`x OP= atomic;`) : périmètre revu à la baisse en cours de route par rapport au plan initial (opérande atomique seulement, pas une sous-expression arbitraire) pour ne jamais réassocier une chaîne d'opérations flottantes et casser la garantie de rendu bit-exact — les 5 autres items de cette vague restent non implémentés. Mis à jour ensuite avec la migration i18n complète de `main_window.py` et `shortcuts.py` (les deux seuls fichiers de la liste UI/UX encore non migrés vers `tr()` ; les six autres l'étaient déjà), la correction d'un bug de résolution des clés plates `actions.*` dans `python_ui/i18n.py::_lookup` (découpait chaque point comme un niveau d'imbrication, cassait silencieusement toute clé `actions.*`), le rattrapage de parité `lngs/en.json` (10 clés manquantes par rapport à `fr.json`) et la correction de `test_export_video_dialog.py` qui référençait encore les anciennes clés françaises en dur de `CRF_PRESETS` — toute la section 🌍 Internationalisation ne compte donc plus que trois items non faits (sélecteur de langue, test de cohérence dédié `test_i18n_completeness.py`, pluralisation/RTL délibérément hors scope). Mis à jour ensuite avec le sélecteur de langue du panneau `Fichier → Préférences…` (`QComboBox` peuplé via `i18n.available_languages()`, persisté dans `QSettings` sous `languageCode`, message de relance affiché uniquement si la langue sélectionnée change) : la section 🌍 Internationalisation ne compte donc plus que deux items non faits (test de cohérence dédié, pluralisation/RTL délibérément hors scope). Mis à jour ensuite avec `test_i18n_completeness.py` (parité de clés généralisée à tous les fichiers de `lngs/`, `i18n.py::tr` qui lève désormais `MissingTranslationKeyError` en développement pour une clé introuvable nulle part plutôt que de dégrader silencieusement — toujours silencieux dans un build empaqueté, `test_i18n.py` mis à jour en conséquence —, et scan statique des appels `tr("...")` littéraux du code contre `fr.json`) : la section 🌍 Internationalisation ne compte donc plus qu'un seul item non fait, délibérément hors scope (pluralisation ICU/gettext, RTL). Mis à jour ensuite avec le quatrième item de la vague "Golf avancé — prochaine vague" (les trois premiers — affectation composée généralisée, splat de constructeur de vecteur, suppression du `in` — étaient déjà faits) : conversion `if`/`else` à affectation unique en opérateur ternaire (`ternary_from_if_else`, `golf.rs`), avec un garde-fou supplémentaire non prévu par le plan initial (rejet d'une condition contenant une affectation ou une virgule à profondeur 0, qui casserait la précédence une fois embarquée dans un `?:`) et une composition volontairement non traitée pour un `if` imbriqué déjà converti par la même passe (branches interdites de contenir `?`/`:`, pour ne jamais avoir à distinguer un ternaire bien formé d'un autre déjà présent). Mis à jour ensuite avec le cinquième item de la vague "Golf avancé — prochaine vague" (repli de constantes purement littérales, `simplify_algebra_pass`, restreint aux opérandes entiers exacts pour rester bit-exact avec l'arithmétique `f32` du pilote GPU cible) — il ne restait alors plus que le dernier item de cette vague, le plus risqué (inlining des fonctions à site d'appel unique). Mis à jour enfin avec cet item (`inline_single_call_functions`, `golf.rs`, branchée sous le même toggle `dead_code` que `remove_unused_functions`) : périmètre tenu au plan initial (fonction non-`void`, corps réduit à un seul `return expr;`, appelée exactement une fois, paramètres substitués systématiquement entre parenthèses, jamais Common), avec un garde-fou supplémentaire découvert en écrivant les tests et non prévu par le plan initial — l'expression de retour substituée est elle-même parenthésée dans son ensemble au site d'appel (pas seulement chaque paramètre), pour ne jamais casser la précédence quand l'appel inliné est imbriqué dans un opérateur de précédence différente de celui du corps de la fonction. La section 🏌️ Golfing est donc désormais entièrement implémentée — la vague "Golf avancé — prochaine vague" n'a plus d'item non fait. Mis à jour enfin avec l'entrée audio (.mp3/.wav) comme type de canal `iChannel` (nouveau `python_ui/audio_source.py`, `ChannelInput::Audio` côté `renderer.rs`/`texture.rs`/`lib.rs`, entrée « Audio (fichier)… » dans `ichannel_panel.py`, `self._audio_sources`/`_on_audio_tick` dans `main_window.py`, clés i18n ajoutées aux 12 fichiers de `lngs/`) : périmètre tenu au plan déjà détaillé plus haut (FFT numpy fenêtrée Hann sur 1024 échantillons → 512 bandes, forme d'onde sous-échantillonnée à 512 points, texture 512×2 fixe jamais recréée contrairement à la vidéo), microphone/contrôle de volume/calage bit-exact du spectre restant explicitement hors périmètre comme prévu. Ni toolchain Rust ni PySide6 n'étant disponibles dans cet environnement de développement, cette entrée n'a pu être vérifiée que par relecture et `python3 -m py_compile`, pas par compilation Rust ni exécution réelle contre un fichier audio — à revalider dans un environnement complet avant la comparaison visuelle contre un shader Shadertoy audio-réactif connu que le plan prévoit déjà.
+*Généré à partir d'une lecture du contenu de `petitediteurglsl.zip` : `rust_engine/src/{golf,literals,shader,renderer,texture,lib}.rs` et `python_ui/{main.py,engine_bridge.py,local_server.py,ui/*.py}`. Mis à jour après la refonte "sliders détectés automatiquement, zéro syntaxe custom", puis après l'ajout des sections golf avancé (🏆) et export vidéo .mp4 (🎬) — la section golf avancé est entièrement implémentée et testée, y compris le renommage pondéré par fréquence. Mis à jour ensuite avec l'import direct depuis Shadertoy (nouveau module `python_ui/shadertoy_import.py`), dont la partie "convention de nommage des faces de cubemap" reste une implémentation best-effort faute d'accès réseau sortant vers shadertoy.com dans l'environnement de développement. Mis à jour ensuite avec la boucle de capture image par image de l'export vidéo (nouveau `python_ui/video_export.py`, testé via un `Engine` factice faute de toolchain Rust dans cet environnement) : le reste de la section 🎬 (dialogue d'export, barre de progression, invocation `ffmpeg`, empaquetage, CLI batch) reste un plan détaillé, non encore implémenté. Ajout d'une nouvelle vague "Golf avancé — prochaine vague" (affectation composée généralisée, splat de constructeur de vecteur, suppression du qualificatif `in`, ternaire depuis un `if`/`else` à affectation unique, repli de constantes littérales exactes, inlining des fonctions à site d'appel unique) : plan détaillé classé par gain/risque comme le reste de cette section. Implémentation de son premier item, l'affectation composée généralisée (`x=x OP atomic;`→`x OP= atomic;`) : périmètre revu à la baisse en cours de route par rapport au plan initial (opérande atomique seulement, pas une sous-expression arbitraire) pour ne jamais réassocier une chaîne d'opérations flottantes et casser la garantie de rendu bit-exact — les 5 autres items de cette vague restent non implémentés. Mis à jour ensuite avec la migration i18n complète de `main_window.py` et `shortcuts.py` (les deux seuls fichiers de la liste UI/UX encore non migrés vers `tr()` ; les six autres l'étaient déjà), la correction d'un bug de résolution des clés plates `actions.*` dans `python_ui/i18n.py::_lookup` (découpait chaque point comme un niveau d'imbrication, cassait silencieusement toute clé `actions.*`), le rattrapage de parité `lngs/en.json` (10 clés manquantes par rapport à `fr.json`) et la correction de `test_export_video_dialog.py` qui référençait encore les anciennes clés françaises en dur de `CRF_PRESETS` — toute la section 🌍 Internationalisation ne compte donc plus que trois items non faits (sélecteur de langue, test de cohérence dédié `test_i18n_completeness.py`, pluralisation/RTL délibérément hors scope). Mis à jour ensuite avec le sélecteur de langue du panneau `Fichier → Préférences…` (`QComboBox` peuplé via `i18n.available_languages()`, persisté dans `QSettings` sous `languageCode`, message de relance affiché uniquement si la langue sélectionnée change) : la section 🌍 Internationalisation ne compte donc plus que deux items non faits (test de cohérence dédié, pluralisation/RTL délibérément hors scope). Mis à jour ensuite avec `test_i18n_completeness.py` (parité de clés généralisée à tous les fichiers de `lngs/`, `i18n.py::tr` qui lève désormais `MissingTranslationKeyError` en développement pour une clé introuvable nulle part plutôt que de dégrader silencieusement — toujours silencieux dans un build empaqueté, `test_i18n.py` mis à jour en conséquence —, et scan statique des appels `tr("...")` littéraux du code contre `fr.json`) : la section 🌍 Internationalisation ne compte donc plus qu'un seul item non fait, délibérément hors scope (pluralisation ICU/gettext, RTL). Mis à jour ensuite avec le quatrième item de la vague "Golf avancé — prochaine vague" (les trois premiers — affectation composée généralisée, splat de constructeur de vecteur, suppression du `in` — étaient déjà faits) : conversion `if`/`else` à affectation unique en opérateur ternaire (`ternary_from_if_else`, `golf.rs`), avec un garde-fou supplémentaire non prévu par le plan initial (rejet d'une condition contenant une affectation ou une virgule à profondeur 0, qui casserait la précédence une fois embarquée dans un `?:`) et une composition volontairement non traitée pour un `if` imbriqué déjà converti par la même passe (branches interdites de contenir `?`/`:`, pour ne jamais avoir à distinguer un ternaire bien formé d'un autre déjà présent). Mis à jour ensuite avec le cinquième item de la vague "Golf avancé — prochaine vague" (repli de constantes purement littérales, `simplify_algebra_pass`, restreint aux opérandes entiers exacts pour rester bit-exact avec l'arithmétique `f32` du pilote GPU cible) — il ne restait alors plus que le dernier item de cette vague, le plus risqué (inlining des fonctions à site d'appel unique). Mis à jour enfin avec cet item (`inline_single_call_functions`, `golf.rs`, branchée sous le même toggle `dead_code` que `remove_unused_functions`) : périmètre tenu au plan initial (fonction non-`void`, corps réduit à un seul `return expr;`, appelée exactement une fois, paramètres substitués systématiquement entre parenthèses, jamais Common), avec un garde-fou supplémentaire découvert en écrivant les tests et non prévu par le plan initial — l'expression de retour substituée est elle-même parenthésée dans son ensemble au site d'appel (pas seulement chaque paramètre), pour ne jamais casser la précédence quand l'appel inliné est imbriqué dans un opérateur de précédence différente de celui du corps de la fonction. La section 🏌️ Golfing est donc désormais entièrement implémentée — la vague "Golf avancé — prochaine vague" n'a plus d'item non fait. Mis à jour enfin avec l'entrée audio (.mp3/.wav) comme type de canal `iChannel` (nouveau `python_ui/audio_source.py`, `ChannelInput::Audio` côté `renderer.rs`/`texture.rs`/`lib.rs`, entrée « Audio (fichier)… » dans `ichannel_panel.py`, `self._audio_sources`/`_on_audio_tick` dans `main_window.py`, clés i18n ajoutées aux 12 fichiers de `lngs/`) : périmètre tenu au plan déjà détaillé plus haut (FFT numpy fenêtrée Hann sur 1024 échantillons → 512 bandes, forme d'onde sous-échantillonnée à 512 points, texture 512×2 fixe jamais recréée contrairement à la vidéo), microphone/contrôle de volume/calage bit-exact du spectre restant explicitement hors périmètre comme prévu. Ni toolchain Rust ni PySide6 n'étant disponibles dans cet environnement de développement, cette entrée n'a pu être vérifiée que par relecture et `python3 -m py_compile`, pas par compilation Rust ni exécution réelle contre un fichier audio — à revalider dans un environnement complet avant la comparaison visuelle contre un shader Shadertoy audio-réactif connu que le plan prévoit déjà. Mis à jour enfin avec les trois derniers items ouverts de la section 🏌️ Golfing : l'inlining des fonctions à site d'appel unique est généralisé à un nombre quelconque de sites d'appel (`find_all_call_sites`/`substitute_call`/`inline_at_call_sites`, `golf.rs`, détection de récursivité par comparaison `usage_count == call_sites.len() + 1` plutôt que l'ancien seuil fixe `== 2`) ; la conversion `if`/`else` en ternaire compose désormais un `if` imbriqué et une chaîne `else if` en une seule expression via une récursion pilotée par le parseur sur les tokens originaux (`parse_ternary_branch`/`try_rewrite_if_else_ternary_inner`, `golf.rs`), plutôt que de rescanner du texte `?:` déjà produit ; et la comparaison de score, dont la formulation initiale du ticket ("comparaison en ligne avec un score externe") s'est révélée hors d'atteinte dans ce projet (aucun backend réseau n'existe dans cette appli desktop autonome — en inventer un aurait signifié un appel vers un service fictif), a été réinterprétée et livrée comme un suivi **local** du meilleur score par projet+pass (`record_golf_score`/`golf_personal_best_html`, `python_ui/ui/footer.py`, persistance JSON via `QSettings`, clés i18n ajoutées aux 12 fichiers de `lngs/`, vérifiées par `test_i18n_completeness.py`/`test_i18n.py`) — un bug réel (`is_new_best` incorrect au tout premier score d'un projet+pass, invisible côté UI mais faux au niveau du contrat de l'API) trouvé et corrigé grâce à une simulation de la logique en Python pur, faute de PySide6 installable ici. La section 🏌️ Golfing est donc de nouveau entièrement implémentée. Aucun accès réseau dans cette session (ni pour `rustc`/`cargo`, ni pour PySide6) : les changements Rust n'ont pu être vérifiés que par relecture manuelle poussée et traçage à la main (jamais par `rustc --test`, à la différence de plusieurs entrées précédentes de ce fichier qui avaient pu compiler dans une session antérieure) ; les changements Python, par `py_compile` et une resimulation de la logique pure hors PySide6 — à recompiler et revalider intégralement dans un environnement complet.
