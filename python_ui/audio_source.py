@@ -113,6 +113,22 @@ class _AudioAnalysisMixin:
         # Precomputed once: same window every call, only the samples
         # inside it change.
         self._hann = np.hanning(_FFT_SIZE).astype(np.float32)
+        # RESTE.md: "calage bit-exact du spectre FFT" against
+        # shadertoy.com is unverifiable from this codebase (no published
+        # formula, and no network access to compare against a real
+        # reference render in this development environment either --
+        # see `shadertoy_import._cubemap_face_urls` for the identical
+        # constraint on a different feature). Rather than silently guess
+        # at different `_DB_FLOOR`/`_DB_CEIL` constants with no way to
+        # verify they're actually a better match, this exposes the gap
+        # the *user* can close: a live, per-source gain offset (dB) they
+        # can dial in by eye against their own audio-reactive shader,
+        # persisted per iChannel slot exactly like the existing
+        # procedural-texture scale/seed controls.
+        self._gain_db = 0.0
+
+    def set_gain_db(self, gain_db: float) -> None:
+        self._gain_db = gain_db
 
     def _push_samples(self, samples: np.ndarray) -> None:
         if samples.size >= _FFT_SIZE:
@@ -130,7 +146,7 @@ class _AudioAnalysisMixin:
         engine's own zero-filled `ChannelTexture::audio`."""
         windowed = self._ring * self._hann
         spectrum_full = np.abs(np.fft.rfft(windowed))  # _FFT_SIZE//2 + 1 bins
-        db = 20.0 * np.log10(spectrum_full + 1e-9)
+        db = 20.0 * np.log10(spectrum_full + 1e-9) + self._gain_db
         normalized = np.clip((db - _DB_FLOOR) / (_DB_CEIL - _DB_FLOOR), 0.0, 1.0)
         # Drop the Nyquist bin (index _FFT_SIZE//2) so exactly 512 bands
         # remain, one per texture column, low frequencies on the left --

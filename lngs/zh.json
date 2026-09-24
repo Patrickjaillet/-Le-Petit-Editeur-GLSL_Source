@@ -399,6 +399,8 @@
     "change_audio": "更改音频…",
     "change_microphone": "更换麦克风…",
     "volume_tooltip": "音频输入音量（与系统音量无关）",
+    "audio_gain_label": "增益",
+    "audio_gain_tooltip": "在频谱归一化之前应用的增益偏移（dB）——请凭观察/听觉调整，shadertoy.com 的确切比例未公开",
     "mute_tooltip": "静音",
     "procedural_scale_label": "图案大小",
     "procedural_scale_tooltip": "图案大小（格数／噪点网格分辨率）",

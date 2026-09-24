@@ -399,6 +399,8 @@
     "change_audio": "Bytt lyd…",
     "change_microphone": "Bytt mikrofon…",
     "volume_tooltip": "Volum for lydinngangen (uavhengig av systemvolumet)",
+    "audio_gain_label": "Forsterkning",
+    "audio_gain_tooltip": "Forsterkningsforskyvning (dB) brukt før spektrumnormalisering — juster etter øye/øre, den eksakte skalaen til shadertoy.com er ikke publisert",
     "mute_tooltip": "Demp",
     "procedural_scale_label": "Mønsterstørrelse",
     "procedural_scale_tooltip": "Mønsterstørrelse (antall celler / oppløsning på støyrutenettet)",

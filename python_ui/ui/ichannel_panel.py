@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -364,6 +365,10 @@ class _ChannelSlot(QWidget):
     audioSettingsChanged = Signal(int, float, bool)
     # RM10.md section 5: channel_index, scale (pattern size), seed.
     proceduralSettingsChanged = Signal(int, int, int)
+    # RESTE.md: channel_index, gain offset in dB -- user-adjustable
+    # compensation for the unverifiable shadertoy.com FFT scaling, shown
+    # for both "audio" and "microphone".
+    gainChanged = Signal(int, float)
 
     def __init__(self, index: int, parent=None):
         super().__init__(parent)
@@ -372,6 +377,7 @@ class _ChannelSlot(QWidget):
         self._value = None
         self._volume = 1.0
         self._muted = False
+        self._gain_db = 0.0
         self._procedural_scale = 8
         self._procedural_seed = 0
         self.setAcceptDrops(True)
@@ -440,6 +446,28 @@ class _ChannelSlot(QWidget):
         self._procedural_row_widget.setLayout(procedural_row)
         self._procedural_row_widget.setVisible(False)
         layout.addWidget(self._procedural_row_widget)
+
+        # RESTE.md: since the exact shadertoy.com FFT-to-[0,1] scaling
+        # formula isn't published and can't be verified against a real
+        # reference render in this development environment (see
+        # `audio_source._AudioAnalysisMixin._init_analysis`'s own
+        # docstring), this exposes a live gain offset (dB) the user can
+        # dial in by eye instead -- shown for both "audio" (file playback)
+        # and "microphone" (live capture), since both feed the same FFT
+        # analysis.
+        gain_row = QFormLayout()
+        self._gain_spin = QDoubleSpinBox()
+        self._gain_spin.setRange(-40.0, 40.0)
+        self._gain_spin.setSingleStep(1.0)
+        self._gain_spin.setValue(0.0)
+        self._gain_spin.setSuffix(" dB")
+        self._gain_spin.setToolTip(tr("ichannel_panel.audio_gain_tooltip"))
+        self._gain_spin.valueChanged.connect(self._on_gain_changed)
+        gain_row.addRow(tr("ichannel_panel.audio_gain_label"), self._gain_spin)
+        self._gain_row_widget = QWidget()
+        self._gain_row_widget.setLayout(gain_row)
+        self._gain_row_widget.setVisible(False)
+        layout.addWidget(self._gain_row_widget)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -548,6 +576,7 @@ class _ChannelSlot(QWidget):
         }.get(kind, tr("ichannel_panel.browse")))
         self._volume_row_widget.setVisible(kind == "audio")
         self._procedural_row_widget.setVisible(kind in ("procedural", "procedural_cubemap"))
+        self._gain_row_widget.setVisible(kind in ("audio", "microphone"))
 
     def set_procedural_settings(self, scale: int, seed: int) -> None:
         """Restores this slot's pattern-size/seed controls without
@@ -588,6 +617,18 @@ class _ChannelSlot(QWidget):
         self._muted = checked
         self._mute_btn.setText("🔇" if checked else "🔊")
         self.audioSettingsChanged.emit(self.index, self._volume, self._muted)
+
+    def set_gain(self, gain_db: float) -> None:
+        """Restores this slot's gain-offset control without emitting
+        `gainChanged` -- same contract as `set_audio_settings`."""
+        self._gain_db = gain_db
+        self._gain_spin.blockSignals(True)
+        self._gain_spin.setValue(gain_db)
+        self._gain_spin.blockSignals(False)
+
+    def _on_gain_changed(self, value: float) -> None:
+        self._gain_db = value
+        self.gainChanged.emit(self.index, self._gain_db)
 
     def set_live_thumbnail(self, pixmap: QPixmap) -> None:
         """RM10.md section 5: applies a freshly decoded frame/waveform
@@ -866,6 +907,8 @@ class IChannelPanel(QWidget):
     audioSettingsChanged = Signal(int, int, float, bool)
     # pass_index, channel_index, scale, seed
     proceduralSettingsChanged = Signal(int, int, int, int)
+    # pass_index, channel_index, gain offset in dB
+    gainChanged = Signal(int, int, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -877,6 +920,7 @@ class IChannelPanel(QWidget):
             slot.assignmentChanged.connect(self._on_slot_changed)
             slot.audioSettingsChanged.connect(self._on_slot_audio_settings_changed)
             slot.proceduralSettingsChanged.connect(self._on_slot_procedural_settings_changed)
+            slot.gainChanged.connect(self._on_slot_gain_changed)
             layout.addWidget(slot)
             self._slots.append(slot)
 
@@ -890,6 +934,10 @@ class IChannelPanel(QWidget):
         # only; absent means the default (8, 0) -- see
         # `_procedural_settings_for`.
         self._procedural_settings: dict[tuple[int, int], tuple[int, int]] = {}
+        # (pass_index, channel_index) -> gain offset in dB, audio/
+        # microphone slots only; absent means the default 0.0 -- see
+        # `_gain_for`.
+        self._gain_settings: dict[tuple[int, int], float] = {}
 
     def _states_for(self, pass_index: int) -> list[tuple[str, object]]:
         return self._assignments.setdefault(pass_index, [("empty", None)] * 4)
@@ -917,6 +965,16 @@ class IChannelPanel(QWidget):
         `MainWindow` can pass it to `Engine.set_ichannel_procedural`."""
         return self._procedural_settings_for(pass_index, channel_index)
 
+    def _gain_for(self, pass_index: int, channel_index: int) -> float:
+        return self._gain_settings.get((pass_index, channel_index), 0.0)
+
+    def gain_for(self, pass_index: int, channel_index: int) -> float:
+        """Public accessor: current gain offset (dB) for a slot, so
+        `MainWindow` can apply it to a freshly (re)started
+        `AudioChannelSource`/`MicrophoneChannelSource` -- see
+        `_AudioAnalysisMixin.set_gain_db`."""
+        return self._gain_for(pass_index, channel_index)
+
     def set_active_pass(self, pass_index: int) -> None:
         self._active_pass = pass_index
         states = self._states_for(pass_index)
@@ -926,6 +984,7 @@ class IChannelPanel(QWidget):
             slot.set_audio_settings(volume, muted)
             scale, seed = self._procedural_settings_for(pass_index, channel_index)
             slot.set_procedural_settings(scale, seed)
+            slot.set_gain(self._gain_for(pass_index, channel_index))
 
     def _on_slot_changed(self, channel_index: int, kind: str, value) -> None:
         states = self._states_for(self._active_pass)
@@ -939,6 +998,10 @@ class IChannelPanel(QWidget):
     def _on_slot_procedural_settings_changed(self, channel_index: int, scale: int, seed: int) -> None:
         self._procedural_settings[(self._active_pass, channel_index)] = (scale, seed)
         self.proceduralSettingsChanged.emit(self._active_pass, channel_index, scale, seed)
+
+    def _on_slot_gain_changed(self, channel_index: int, gain_db: float) -> None:
+        self._gain_settings[(self._active_pass, channel_index)] = gain_db
+        self.gainChanged.emit(self._active_pass, channel_index, gain_db)
 
     def project_data(self) -> dict:
         """Serializable snapshot of every pass's channel assignments. An
@@ -959,6 +1022,10 @@ class IChannelPanel(QWidget):
                     scale, seed = self._procedural_settings_for(pass_index, channel_index)
                     entry["scale"] = scale
                     entry["seed"] = seed
+                if kind in ("audio", "microphone"):
+                    gain_db = self._gain_for(pass_index, channel_index)
+                    if gain_db != 0.0:
+                        entry["gain_db"] = gain_db
                 entries.append(entry)
             result[str(pass_index)] = entries
         return result
@@ -967,6 +1034,7 @@ class IChannelPanel(QWidget):
         self._assignments = {}
         self._audio_settings = {}
         self._procedural_settings = {}
+        self._gain_settings = {}
         for pass_index_str, items in data.items():
             pass_index = int(pass_index_str)
             states = []
@@ -991,6 +1059,12 @@ class IChannelPanel(QWidget):
                     except (TypeError, ValueError):
                         seed = 0
                     self._procedural_settings[(pass_index, channel_index)] = (scale, seed)
+                if kind in ("audio", "microphone") and "gain_db" in item:
+                    try:
+                        gain_db = max(-40.0, min(40.0, float(item["gain_db"])))
+                    except (TypeError, ValueError):
+                        gain_db = 0.0
+                    self._gain_settings[(pass_index, channel_index)] = gain_db
             self._assignments[pass_index] = states
         self.set_active_pass(self._active_pass)
 

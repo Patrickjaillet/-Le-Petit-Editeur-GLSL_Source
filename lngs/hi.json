@@ -399,6 +399,8 @@
     "change_audio": "ऑडियो बदलें…",
     "change_microphone": "माइक्रोफ़ोन बदलें…",
     "volume_tooltip": "ऑडियो इनपुट वॉल्यूम (सिस्टम वॉल्यूम से स्वतंत्र)",
+    "audio_gain_label": "गेन",
+    "audio_gain_tooltip": "स्पेक्ट्रम सामान्यीकरण से पहले लागू गेन ऑफ़सेट (dB) — आंख/कान से समायोजित करें, shadertoy.com का सटीक स्केल प्रकाशित नहीं है",
     "mute_tooltip": "म्यूट",
     "procedural_scale_label": "पैटर्न आकार",
     "procedural_scale_tooltip": "पैटर्न आकार (सेल संख्या / नॉइज़ ग्रिड रिज़ॉल्यूशन)",

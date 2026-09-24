@@ -399,6 +399,8 @@
     "change_audio": "Audio ändern…",
     "change_microphone": "Mikrofon wechseln…",
     "volume_tooltip": "Lautstärke der Audioquelle (unabhängig von der Systemlautstärke)",
+    "audio_gain_label": "Verstärkung",
+    "audio_gain_tooltip": "Verstärkungsversatz (dB) vor der Spektrum-Normalisierung — nach Gehör/Auge anpassen, die genaue Skala von shadertoy.com ist nicht veröffentlicht",
     "mute_tooltip": "Stumm",
     "procedural_scale_label": "Mustergröße",
     "procedural_scale_tooltip": "Mustergröße (Anzahl der Zellen / Auflösung des Rauschrasters)",

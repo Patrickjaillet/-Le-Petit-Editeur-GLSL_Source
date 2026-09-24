@@ -417,6 +417,7 @@ class MainWindow(QMainWindow):
         self.ichannel_panel.assignmentChanged.connect(self._on_ichannel_assignment_changed)
         self.ichannel_panel.audioSettingsChanged.connect(self._on_ichannel_audio_settings_changed)
         self.ichannel_panel.proceduralSettingsChanged.connect(self._on_ichannel_procedural_settings_changed)
+        self.ichannel_panel.gainChanged.connect(self._on_ichannel_gain_changed)
         self.sliders_panel.literalEdited.connect(self._on_literal_edited)
         self.sliders_panel.dragFinished.connect(self._on_slider_drag_finished)
 
@@ -1947,6 +1948,18 @@ class MainWindow(QMainWindow):
         except RuntimeError as exc:
             QMessageBox.warning(self, tr("dialogs.ichannel_error.title"), str(exc))
 
+    def _on_ichannel_gain_changed(self, pass_idx: int, channel_idx: int, gain_db: float) -> None:
+        """RESTE.md: live gain offset (dB) for an audio/microphone
+        iChannel slot, adjusted from the textures panel -- the user's own
+        compensation for the unverifiable shadertoy.com FFT scaling (see
+        `_AudioAnalysisMixin._init_analysis`'s docstring). A no-op if this
+        slot has no active source right now, same "recorded, applied the
+        moment a source does start" contract as
+        `_on_ichannel_audio_settings_changed`."""
+        source = self._audio_sources.get((pass_idx, channel_idx))
+        if source is not None:
+            source.set_gain_db(gain_db)
+
     def _start_video_channel(self, pass_idx: int, channel_idx: int, path: str) -> None:
         """Allocates the engine-side placeholder for a video-file iChannel
         slot, then opens `path` with Qt and starts streaming decoded
@@ -2060,6 +2073,7 @@ class MainWindow(QMainWindow):
         volume, muted = self.ichannel_panel.audio_settings_for(pass_idx, channel_idx)
         source.set_volume(volume)
         source.set_muted(muted)
+        source.set_gain_db(self.ichannel_panel.gain_for(pass_idx, channel_idx))
         self._audio_sources[(pass_idx, channel_idx)] = source
         try:
             source.start(path)
@@ -2087,6 +2101,7 @@ class MainWindow(QMainWindow):
             return
         source = MicrophoneChannelSource(self)
         source.sourceLost.connect(lambda msg, p=pass_idx, c=channel_idx: self._on_source_lost(p, c, msg))
+        source.set_gain_db(self.ichannel_panel.gain_for(pass_idx, channel_idx))
         self._audio_sources[(pass_idx, channel_idx)] = source
         if not source.start(device_id):
             QMessageBox.warning(self, tr("dialogs.microphone_error.title"), tr("dialogs.microphone_error.no_microphone"))

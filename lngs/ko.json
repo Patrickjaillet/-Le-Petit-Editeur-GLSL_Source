@@ -399,6 +399,8 @@
     "change_audio": "오디오 변경…",
     "change_microphone": "마이크 변경…",
     "volume_tooltip": "오디오 입력 볼륨(시스템 볼륨과 무관)",
+    "audio_gain_label": "게인",
+    "audio_gain_tooltip": "스펙트럼 정규화 전에 적용되는 게인 오프셋(dB) — shadertoy.com의 정확한 스케일이 공개되지 않았으므로 눈/귀로 조정하세요",
     "mute_tooltip": "음소거",
     "procedural_scale_label": "패턴 크기",
     "procedural_scale_tooltip": "패턴 크기(셀 개수 / 노이즈 격자 해상도)",

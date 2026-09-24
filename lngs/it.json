@@ -399,6 +399,8 @@
     "change_audio": "Cambia audio…",
     "change_microphone": "Cambia microfono…",
     "volume_tooltip": "Volume dell'ingresso audio (indipendente dal volume di sistema)",
+    "audio_gain_label": "Guadagno",
+    "audio_gain_tooltip": "Offset di guadagno (dB) applicato prima della normalizzazione dello spettro — regola a occhio/orecchio, la scala esatta di shadertoy.com non è pubblicata",
     "mute_tooltip": "Muto",
     "procedural_scale_label": "Dimensione del motivo",
     "procedural_scale_tooltip": "Dimensione del motivo (numero di celle / risoluzione della griglia di rumore)",

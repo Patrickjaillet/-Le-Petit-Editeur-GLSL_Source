@@ -399,6 +399,8 @@
     "change_audio": "Byt ljud…",
     "change_microphone": "Byt mikrofon…",
     "volume_tooltip": "Ljudingångens volym (oberoende av systemvolymen)",
+    "audio_gain_label": "Förstärkning",
+    "audio_gain_tooltip": "Förstärkningsförskjutning (dB) som tillämpas före spektrumnormalisering — justera på öga/öra, shadertoy.coms exakta skala är inte publicerad",
     "mute_tooltip": "Tyst",
     "procedural_scale_label": "Mönsterstorlek",
     "procedural_scale_tooltip": "Mönsterstorlek (antal celler / brusrutnätets upplösning)",

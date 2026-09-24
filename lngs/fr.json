@@ -399,6 +399,8 @@
     "change_audio": "Changer de fichier audio…",
     "change_microphone": "Changer de microphone…",
     "volume_tooltip": "Volume de l'entrée audio (indépendant du volume système)",
+    "audio_gain_label": "Gain",
+    "audio_gain_tooltip": "Décalage de gain (dB) appliqué avant la normalisation du spectre — à ajuster à l'oreille/à l'œil, l'échelle exacte de shadertoy.com n'est pas publiée",
     "mute_tooltip": "Muet",
     "procedural_scale_label": "Taille du motif",
     "procedural_scale_tooltip": "Taille du motif (nombre de cellules / résolution de la grille de bruit)",

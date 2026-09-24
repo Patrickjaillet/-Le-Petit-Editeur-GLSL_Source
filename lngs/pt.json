@@ -399,6 +399,8 @@
     "change_audio": "Alterar áudio…",
     "change_microphone": "Mudar microfone…",
     "volume_tooltip": "Volume da entrada de áudio (independente do volume do sistema)",
+    "audio_gain_label": "Ganho",
+    "audio_gain_tooltip": "Deslocamento de ganho (dB) aplicado antes da normalização do espetro — ajuste a olho/ouvido, a escala exata do shadertoy.com não é publicada",
     "mute_tooltip": "Mudo",
     "procedural_scale_label": "Tamanho do padrão",
     "procedural_scale_tooltip": "Tamanho do padrão (número de células / resolução da grelha de ruído)",

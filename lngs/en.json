@@ -399,6 +399,8 @@
     "change_audio": "Change audio…",
     "change_microphone": "Change microphone…",
     "volume_tooltip": "Audio input volume (independent of the system volume)",
+    "audio_gain_label": "Gain",
+    "audio_gain_tooltip": "Gain offset (dB) applied before spectrum normalization — adjust by eye/ear, shadertoy.com's exact scale isn't published",
     "mute_tooltip": "Mute",
     "procedural_scale_label": "Pattern size",
     "procedural_scale_tooltip": "Pattern size (cell count / noise grid resolution)",

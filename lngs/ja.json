@@ -399,6 +399,8 @@
     "change_audio": "オーディオを変更…",
     "change_microphone": "マイクを変更…",
     "volume_tooltip": "オーディオ入力の音量（システム音量とは独立）",
+    "audio_gain_label": "ゲイン",
+    "audio_gain_tooltip": "スペクトル正規化前に適用されるゲインオフセット (dB) — shadertoy.com の正確なスケールは公開されていないため、目や耳で調整してください",
     "mute_tooltip": "ミュート",
     "procedural_scale_label": "パターンサイズ",
     "procedural_scale_tooltip": "パターンサイズ（セル数／ノイズグリッドの解像度）",
