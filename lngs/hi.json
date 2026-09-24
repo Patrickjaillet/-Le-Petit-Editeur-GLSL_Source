@@ -398,6 +398,7 @@
     "choose_audio": "iChannel{index} के लिए ऑडियो फ़ाइल चुनें",
     "choose_image": "iChannel{index} के लिए इमेज चुनें",
     "procedural_suffix": "{label} (प्रोसीजरल)",
+    "procedural_cubemap_suffix": "{label} (प्रोसीजरल क्यूबमैप)",
     "thumb_empty": "खाली",
     "thumb_cube": "क्यूब",
     "default_webcam_tooltip": "डिफ़ॉल्ट वेबकैम",

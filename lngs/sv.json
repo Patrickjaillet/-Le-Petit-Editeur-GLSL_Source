@@ -398,6 +398,7 @@
     "choose_audio": "Välj en ljudfil för iChannel{index}",
     "choose_image": "Välj en bild för iChannel{index}",
     "procedural_suffix": "{label} (procedurell)",
+    "procedural_cubemap_suffix": "{label} (procedurell cubemap)",
     "thumb_empty": "tom",
     "thumb_cube": "KUB",
     "default_webcam_tooltip": "standardwebbkamera",

@@ -72,6 +72,15 @@ _PROCEDURAL_PRESETS = [
     ("value_noise", "ichannel_panel.procedural_value_noise"),
 ]
 
+# Same 3 presets, generated as a full 6-face cubemap instead of a single
+# 2D texture (`Engine.set_ichannel_procedural_cubemap`) -- an alternative
+# to `_CubemapDialog`'s 6-file picker for when the user just wants a quick
+# synthetic environment map. Reuses the same preset identifiers/i18n
+# labels as `_PROCEDURAL_PRESETS`, just under a distinct `kind` ("
+# procedural_cubemap" vs "procedural") so project files and the combo box
+# can tell the two apart.
+_PROCEDURAL_CUBEMAP_PRESETS = _PROCEDURAL_PRESETS
+
 
 def _video_filter() -> str:
     return tr("ichannel_panel.video_filter")
@@ -102,6 +111,10 @@ def _source_labels() -> list[str]:
             tr("ichannel_panel.source_keyboard"),
         ]
         + [tr("ichannel_panel.procedural_suffix", label=tr(label_key)) for _, label_key in _PROCEDURAL_PRESETS]
+        + [
+            tr("ichannel_panel.procedural_cubemap_suffix", label=tr(label_key))
+            for _, label_key in _PROCEDURAL_CUBEMAP_PRESETS
+        ]
         + [tr("tabs.buffer_a"), tr("tabs.buffer_b"), tr("tabs.buffer_c"), tr("tabs.buffer_d")]
     )
 
@@ -114,7 +127,8 @@ _WEBCAM_INDEX = 4
 _CUBEMAP_INDEX = 5
 _KEYBOARD_INDEX = 6
 _PROCEDURAL_OFFSET = 7
-_BUFFER_OFFSET = _PROCEDURAL_OFFSET + len(_PROCEDURAL_PRESETS)
+_PROCEDURAL_CUBEMAP_OFFSET = _PROCEDURAL_OFFSET + len(_PROCEDURAL_PRESETS)
+_BUFFER_OFFSET = _PROCEDURAL_CUBEMAP_OFFSET + len(_PROCEDURAL_CUBEMAP_PRESETS)
 
 
 def _combo_index_for(kind: str, value) -> int:
@@ -134,6 +148,11 @@ def _combo_index_for(kind: str, value) -> int:
         for i, (key, _label) in enumerate(_PROCEDURAL_PRESETS):
             if key == value:
                 return _PROCEDURAL_OFFSET + i
+        return 0
+    if kind == "procedural_cubemap":
+        for i, (key, _label) in enumerate(_PROCEDURAL_CUBEMAP_PRESETS):
+            if key == value:
+                return _PROCEDURAL_CUBEMAP_OFFSET + i
         return 0
     if kind == "buffer":
         return _BUFFER_OFFSET + int(value)
@@ -155,9 +174,12 @@ def _kind_value_for(combo_index: int):
         return "cubemap", None
     if combo_index == _KEYBOARD_INDEX:
         return "keyboard", None
-    if combo_index < _BUFFER_OFFSET:
+    if combo_index < _PROCEDURAL_CUBEMAP_OFFSET:
         key, _label = _PROCEDURAL_PRESETS[combo_index - _PROCEDURAL_OFFSET]
         return "procedural", key
+    if combo_index < _BUFFER_OFFSET:
+        key, _label = _PROCEDURAL_CUBEMAP_PRESETS[combo_index - _PROCEDURAL_CUBEMAP_OFFSET]
+        return "procedural_cubemap", key
     return "buffer", combo_index - _BUFFER_OFFSET
 
 
@@ -451,6 +473,15 @@ class _ChannelSlot(QWidget):
             self._thumb.setStyleSheet(_THUMB_STYLE)
             self._thumb.setPixmap(_procedural_preview(value))
             self._thumb.setText("")
+        elif kind == "procedural_cubemap" and value:
+            # Same 2D preview as the flat procedural preset (a real
+            # per-face cubemap preview isn't worth the complexity for a
+            # thumbnail this small) plus the cube style/icon from the
+            # file-based cubemap slot, so the two "this slot is a cubemap"
+            # states read the same way at a glance.
+            self._thumb.setStyleSheet(_THUMB_STYLE_CUBEMAP)
+            self._thumb.setPixmap(_procedural_preview(value))
+            self._thumb.setText("")
         elif kind == "video":
             # No live preview thumbnail here (unlike a static image): the
             # first decoded frame only exists once `VideoChannelSource`
@@ -500,7 +531,7 @@ class _ChannelSlot(QWidget):
             "webcam": tr("ichannel_panel.change_webcam"),
         }.get(kind, tr("ichannel_panel.browse")))
         self._volume_row_widget.setVisible(kind == "audio")
-        self._procedural_row_widget.setVisible(kind == "procedural")
+        self._procedural_row_widget.setVisible(kind in ("procedural", "procedural_cubemap"))
 
     def set_procedural_settings(self, scale: int, seed: int) -> None:
         """Restores this slot's pattern-size/seed controls without
@@ -677,6 +708,9 @@ class _ChannelSlot(QWidget):
         elif kind == "procedural":
             self.set_state("procedural", value)
             self.assignmentChanged.emit(self.index, "procedural", value)
+        elif kind == "procedural_cubemap":
+            self.set_state("procedural_cubemap", value)
+            self.assignmentChanged.emit(self.index, "procedural_cubemap", value)
         elif kind == "buffer":
             self.set_state("buffer", value)
             self.assignmentChanged.emit(self.index, "buffer", value)
@@ -875,7 +909,7 @@ class IChannelPanel(QWidget):
                     volume, muted = self._audio_settings_for(pass_index, channel_index)
                     entry["volume"] = volume
                     entry["muted"] = muted
-                elif kind == "procedural":
+                elif kind in ("procedural", "procedural_cubemap"):
                     scale, seed = self._procedural_settings_for(pass_index, channel_index)
                     entry["scale"] = scale
                     entry["seed"] = seed
@@ -901,7 +935,7 @@ class IChannelPanel(QWidget):
                     except (TypeError, ValueError):
                         volume = 1.0
                     self._audio_settings[(pass_index, channel_index)] = (volume, bool(muted))
-                elif kind == "procedural":
+                elif kind in ("procedural", "procedural_cubemap"):
                     try:
                         scale = max(1, min(64, int(item.get("scale", 8))))
                     except (TypeError, ValueError):

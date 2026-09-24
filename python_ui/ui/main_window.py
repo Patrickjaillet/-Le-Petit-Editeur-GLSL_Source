@@ -1903,6 +1903,9 @@ class MainWindow(QMainWindow):
             elif kind == "procedural":
                 scale, seed = self.ichannel_panel.procedural_settings_for(pass_idx, channel_idx)
                 self._engine.set_ichannel_procedural(pass_idx, channel_idx, value, scale, seed)
+            elif kind == "procedural_cubemap":
+                scale, seed = self.ichannel_panel.procedural_settings_for(pass_idx, channel_idx)
+                self._engine.set_ichannel_procedural_cubemap(pass_idx, channel_idx, value, scale, seed)
             elif kind == "buffer":
                 self._engine.set_ichannel_buffer(pass_idx, channel_idx, value)
             elif kind == "keyboard":
@@ -2135,9 +2138,12 @@ class MainWindow(QMainWindow):
         update in place -- a procedural texture is just regenerated and
         re-uploaded outright, same call as a fresh assignment."""
         kind, value = self.ichannel_panel.state_for(pass_idx, channel_idx)
-        if kind != "procedural":
+        if kind not in ("procedural", "procedural_cubemap"):
             return
         try:
-            self._engine.set_ichannel_procedural(pass_idx, channel_idx, value, scale, seed)
+            if kind == "procedural":
+                self._engine.set_ichannel_procedural(pass_idx, channel_idx, value, scale, seed)
+            else:
+                self._engine.set_ichannel_procedural_cubemap(pass_idx, channel_idx, value, scale, seed)
         except RuntimeError as exc:
             QMessageBox.warning(self, tr("dialogs.ichannel_error.title"), str(exc))

@@ -398,6 +398,7 @@
     "choose_audio": "iChannel{index} 用のオーディオファイルを選択",
     "choose_image": "iChannel{index} 用の画像を選択",
     "procedural_suffix": "{label}(プロシージャル)",
+    "procedural_cubemap_suffix": "{label} (プロシージャル・キューブマップ)",
     "thumb_empty": "空",
     "thumb_cube": "CUBE",
     "default_webcam_tooltip": "既定のウェブカメラ",

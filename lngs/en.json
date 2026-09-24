@@ -398,6 +398,7 @@
     "choose_audio": "Choose an audio file for iChannel{index}",
     "choose_image": "Choose an image for iChannel{index}",
     "procedural_suffix": "{label} (procedural)",
+    "procedural_cubemap_suffix": "{label} (procedural cubemap)",
     "thumb_empty": "empty",
     "thumb_cube": "CUBE",
     "default_webcam_tooltip": "default webcam",

@@ -398,6 +398,7 @@
     "choose_audio": "iChannel{index}에 사용할 오디오 파일 선택",
     "choose_image": "iChannel{index}에 사용할 이미지 선택",
     "procedural_suffix": "{label} (프로시저럴)",
+    "procedural_cubemap_suffix": "{label} (프로시저럴 큐브맵)",
     "thumb_empty": "비어 있음",
     "thumb_cube": "CUBE",
     "default_webcam_tooltip": "기본 웹캠",

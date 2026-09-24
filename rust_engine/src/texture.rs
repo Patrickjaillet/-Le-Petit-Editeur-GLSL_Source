@@ -681,4 +681,102 @@ impl ChannelTexture {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         Self { texture, view }
     }
+
+    /// Generates one of the built-in procedural presets as a full 6-face
+    /// cubemap — an alternative to `from_cubemap_files` for when the user
+    /// wants a quick synthetic environment map rather than sourcing 6
+    /// image files. Reuses `ChannelInput::Cubemap` on the caller's side
+    /// (`renderer::Engine::set_ichannel_procedural_cubemap`): a procedural
+    /// cubemap is still just a `Cube`-view texture, indistinguishable at
+    /// sample time from one loaded from files, so no new `ChannelInput`
+    /// variant is needed for it.
+    ///
+    /// Each face reuses the same per-texel generator as `procedural`
+    /// (`generate_checker`/`generate_white_noise`/`generate_value_noise`)
+    /// but, for the two noise-based presets, with a distinct per-face seed
+    /// derived from `seed` -- `checker` ignores `seed` entirely just like
+    /// the 2D preset does, so its 6 faces tile seamlessly into one
+    /// checkered box rather than needing to look distinct. Without
+    /// per-face seeds, the two noise presets would instead paste the
+    /// *exact* same square onto all 6 faces, which reads as an obvious
+    /// repeating texture rather than a surrounding environment the moment
+    /// two adjacent faces are visible at once (e.g. reflected across a
+    /// cube corner).
+    pub fn procedural_cubemap(
+        device: &wgpu::Device, queue: &wgpu::Queue, kind: ProceduralKind, scale: u32, seed: u32,
+    ) -> Self {
+        let size = PROCEDURAL_TEXTURE_SIZE;
+        let scale = if scale == 0 { 8 } else { scale };
+        let base_seed = match (kind, seed == 0) {
+            (ProceduralKind::WhiteNoise, true) => 0x9E37_79B9,
+            (ProceduralKind::ValueNoise, true) => 0x1234_5678,
+            _ => seed, // Checker ignores the seed entirely, same as `procedural`.
+        };
+        let extent = wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 6 };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("ichannel-procedural-cubemap"),
+            size: extent,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        // A large odd multiplier (FNV-prime-derived) keeps the 6 per-face
+        // seeds well spread out even for small `layer` values, rather than
+        // 6 seeds that only differ in their low bits.
+        const FACE_SEED_STRIDE: u32 = 0x0100_0193;
+        for layer in 0..6u32 {
+            let face_seed = base_seed.wrapping_add(layer.wrapping_mul(FACE_SEED_STRIDE));
+            let rgba = match kind {
+                ProceduralKind::Checker => generate_checker(size, scale),
+                ProceduralKind::WhiteNoise => generate_white_noise(size, face_seed),
+                ProceduralKind::ValueNoise => generate_value_noise(size, scale, face_seed),
+            };
+            queue.write_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d { x: 0, y: 0, z: layer },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &rgba,
+                wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * size),
+                    rows_per_image: Some(size),
+                },
+                wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+            );
+        }
+        let view = texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("ichannel-procedural-cubemap-view"),
+            dimension: Some(wgpu::TextureViewDimension::Cube),
+            ..Default::default()
+        });
+        Self { texture, view }
+    }
+}
+
+#[cfg(test)]
+mod procedural_cubemap_tests {
+    use super::*;
+
+    /// Pure-Rust check on the per-face seed derivation, independent of any
+    /// GPU/device: face seeds must all differ from one another (checked
+    /// via the same formula `procedural_cubemap` uses), and `checker`
+    /// must ignore the seed entirely (its faces would tile correctly
+    /// regardless, since `generate_checker` doesn't take a seed at all).
+    #[test]
+    fn face_seeds_are_pairwise_distinct_for_noise_kinds() {
+        const FACE_SEED_STRIDE: u32 = 0x0100_0193;
+        let base_seed = 0x9E37_79B9u32;
+        let seeds: Vec<u32> = (0..6u32).map(|layer| base_seed.wrapping_add(layer.wrapping_mul(FACE_SEED_STRIDE))).collect();
+        for i in 0..6 {
+            for j in (i + 1)..6 {
+                assert_ne!(seeds[i], seeds[j], "face {i} and face {j} must not share a seed");
+            }
+        }
+    }
 }

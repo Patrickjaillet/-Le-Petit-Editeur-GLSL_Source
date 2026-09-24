@@ -398,6 +398,7 @@
     "choose_audio": "为 iChannel{index} 选择音频文件",
     "choose_image": "为 iChannel{index} 选择图像",
     "procedural_suffix": "{label}（程序化）",
+    "procedural_cubemap_suffix": "{label}（程序化立方体贴图）",
     "thumb_empty": "空",
     "thumb_cube": "立方体",
     "default_webcam_tooltip": "默认摄像头",

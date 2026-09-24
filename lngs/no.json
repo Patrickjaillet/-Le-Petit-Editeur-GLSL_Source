@@ -398,6 +398,7 @@
     "choose_audio": "Velg en lydfil for iChannel{index}",
     "choose_image": "Velg et bilde for iChannel{index}",
     "procedural_suffix": "{label} (prosedural)",
+    "procedural_cubemap_suffix": "{label} (prosedyrisk cubemap)",
     "thumb_empty": "tom",
     "thumb_cube": "KUBE",
     "default_webcam_tooltip": "standard webkamera",
