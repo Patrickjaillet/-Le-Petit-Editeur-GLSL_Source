@@ -524,12 +524,54 @@ fn simplify_algebra_pass(src: &str) -> String {
         // `2.5`, no longer an integer to round-trip through this same
         // `exact_integer_literal` shape without its own separate
         // ULP argument) — left out of this first pass entirely rather than
-        // half-covering it. ---
+        // half-covering it.
+        //
+        // **Precedence guards on both sides, required for correctness (not
+        // just bit-exactness).** This window is matched against the
+        // *original* `toks` stream, not `out`, so on its own it has no idea
+        // whether the two `Number`s it sees are actually each other's
+        // operands, or whether one of them really belongs to a
+        // higher-or-equal-precedence operator sitting just outside the
+        // window (`is_atomic_operand`'s own `out.last()`-based rules above
+        // account for the left side on their side; this block didn't
+        // account for either side). Two concrete failures this guards
+        // against:
+        //   - *left*: `2.*3.-1.+4.` folds `2.*3.` to `6.` first (correct,
+        //     higher precedence), but the very same left-to-right scan then
+        //     also matches `1.+4.` -> `5.` *before* the pending `6.-1.` has
+        //     had a chance to resolve, silently re-associating
+        //     `(2.*3.-1.)+4.` (`== 9.`) into `2.*3.-(1.+4.)` (`== 1.`).
+        //   - *right*: `2.+3.*4.` matches `2.+3.` first (leftmost), folding
+        //     it to `5.` before the higher-precedence `3.*4.` has had a
+        //     chance to resolve, silently re-associating `2.+(3.*4.)`
+        //     (`== 14.`) into `(2.+3.)*4.` (`== 20.`).
+        // Both are real, silent changes of the *computed value*, not merely
+        // a different `f32` rounding. `op_precedence` gives `* / %` a
+        // higher rank than `+ -` (GLSL's own precedence); requiring the
+        // pending left operator to be strictly lower precedence, and the
+        // following right operator to be no higher precedence, defers any
+        // ambiguous fold to a later fixpoint pass instead — once the
+        // higher-precedence neighbor has resolved on its own and no longer
+        // stands in the way — the same way `2.*3.*4.` already relies on two
+        // passes (`6.*4.` then `24.`). A guard here can only ever *withhold*
+        // a fold, never change the value one computes, so at worst this
+        // leaves an optimization for a later pass (or unfolded entirely) —
+        // it can never turn a safe fold into a wrong one.
+        fn op_precedence(c: char) -> u8 {
+            match c {
+                '*' | '/' | '%' => 2,
+                '+' | '-' => 1,
+                _ => 0,
+            }
+        }
         if let (Some(AlgTok::Number(a_text)), Some(AlgTok::Punct(op)), Some(AlgTok::Number(b_text))) =
             (toks.get(i), toks.get(i + 1), toks.get(i + 2))
         {
             let op = *op;
-            if matches!(op, '+' | '-' | '*') {
+            let left_blocks = matches!(out.last(), Some(AlgTok::Punct(c)) if op_precedence(*c) >= op_precedence(op));
+            let right_blocks =
+                matches!(toks.get(i + 3), Some(AlgTok::Punct(c)) if op_precedence(*c) > op_precedence(op));
+            if matches!(op, '+' | '-' | '*') && !left_blocks && !right_blocks {
                 if let (Some(a), Some(b)) = (exact_integer_literal(a_text), exact_integer_literal(b_text)) {
                     let folded = match op {
                         '+' => a.checked_add(b),
@@ -3875,6 +3917,41 @@ mod simplify_algebra_tests {
         // with `-`, a negative result is a unary minus + positive literal
         assert_eq!(simplify_algebra("3.-5."), "-2.");
         assert_eq!(simplify_algebra("3.-3."), "0.");
+    }
+
+    #[test]
+    fn constant_fold_respects_operator_precedence_and_associativity() {
+        // Found via real GPU pixel-identical rendering (previously
+        // unreachable: no Rust toolchain able to compile the full
+        // `wgpu`/`image` dependency tree existed in any session that wrote
+        // this pass). Folding `Number op Number` windows purely off the
+        // *original* token stream, ignoring what precedes/follows the
+        // window, silently re-associates mixed-precedence expressions into
+        // a different (wrong) value -- not just a different `f32` rounding.
+        //
+        // `2.*3.-1.+4.*2.` == `((2.*3.)-1.)+(4.*2.)` == `13.`. The bug
+        // instead folded the *unrelated* `1.+4.` pair (both sitting
+        // adjacent to the already-folded `6.` from `2.*3.`) before `6.-1.`
+        // got a chance to resolve, computing `2.*3.-(1.+4.)*2.` == `-8.`-ish
+        // nonsense chains that landed on `18.`.
+        assert_eq!(simplify_algebra("2.*3.-1.+4.*2."), "13.");
+        // `2.+3.*4.` == `2.+(3.*4.)` == `14.`, not `(2.+3.)*4.` == `20.`:
+        // the higher-precedence `3.*4.` to the *right* of the leftmost pair
+        // must resolve first, even though `2.+3.` is textually first.
+        assert_eq!(simplify_algebra("2.+3.*4."), "14.");
+        // Left-associative same-precedence chain: `2.-3.-4.` must never
+        // become `2.-(3.-4.)` == `3.` -- folding the leftmost pair first
+        // (`2.-3.` == `-1.`) is correct here. It textually settles as
+        // `-1.-4.` rather than continuing on to the fully-folded `-5.`:
+        // the leading unary `-` produced by folding a negative result
+        // looks, to the left-context guard, just like a dangling *binary*
+        // operator still waiting for its right operand (the guard has no
+        // notion of unary-vs-binary position), so it conservatively
+        // declines to fold further rather than risk it -- a missed
+        // optimization, never a wrong value: `-1.-4.` still means exactly
+        // `-5.` as GLSL source, same as the guard erring conservative
+        // everywhere else in this file.
+        assert_eq!(simplify_algebra("2.-3.-4."), "-1.-4.");
     }
 
     #[test]
