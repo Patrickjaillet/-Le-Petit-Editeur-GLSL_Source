@@ -19,14 +19,14 @@ FFT is done with numpy (`requirements.txt`), not in pure Python: a radix-2
 FFT on a 1024-sample window at ~60 Hz would likely be too slow on a modest
 machine, and numpy is the simplest way to avoid writing/maintaining one.
 
-Caveat carried over from the rest of this codebase's Qt Multimedia code
-(`video_source.py`, `shadertoy_import.py`): this module was written without
-a working PySide6 install available in this development environment (no
-network egress to PyPI for it here), so the exact `QAudioBuffer` sample-data
-access below is based on the documented Qt Multimedia API rather than a
-locally-run smoke test -- worth double-checking against a real decoded file
-once this lands somewhere PySide6 is actually installed. The spectrum's
-dB-to-[0,1] normalization curve is a second, separately-documented
+**Decode path verified** (`tests/test_audio_ichannel_real.py`): with a real
+PySide6 + GStreamer/FFmpeg decode backend available, this module was driven
+end-to-end against a real WAV file (a synthesized pure tone) -- real
+`QMediaPlayer`/`QAudioBufferOutput` decoding, the `QAudioBuffer`
+sample-format branching below, the ring buffer, and `compute_frame`'s FFT
+all confirmed working, including the spectrum genuinely peaking at the
+tone's own frequency bin. What that test does *not* cover: the spectrum's
+dB-to-[0,1] normalization curve is a still-unverified, separately-documented
 approximation (see the ROADMAP.md entry for this feature): shadertoy.com
 doesn't publish its exact scaling formula, so this is calibrated by eye
 against known audio-reactive shaders rather than guaranteed bit-exact.

@@ -60,18 +60,32 @@ def _run_golf_cli(args: list[str]) -> int:
 
 
 def _parse_export_mp4_args(args: list[str]) -> dict | None:
-    positional = [a for a in args if not a.startswith("--")]
-    if len(positional) != 2:
-        return None
+    # Unlike `_run_golf_cli`'s flags (`--no-rename`/`--no-dead-code`, both
+    # boolean and value-less), every flag here takes a value
+    # (`--duration 10`, `--width 1920`, ...) -- naively collecting "every
+    # arg not starting with `--`" as positional would also sweep up each
+    # flag's own *value* (`10`, `1920`, ...) into that list, since a value
+    # like `10` doesn't start with `--` either. That's exactly what this
+    # used to do, silently breaking the CLI for any invocation using a
+    # value-bearing flag (i.e. the documented usage in this module's own
+    # docstring). Track which positions are consumed as a flag's value
+    # instead, so only genuinely bare tokens (the project/output paths)
+    # end up in `positional`.
     opts: dict[str, str] = {}
+    positional: list[str] = []
     i = 0
     while i < len(args):
         a = args[i]
         if a.startswith("--") and i + 1 < len(args):
             opts[a[2:]] = args[i + 1]
             i += 2
+        elif a.startswith("--"):
+            i += 1  # trailing flag with no value left to consume
         else:
+            positional.append(a)
             i += 1
+    if len(positional) != 2:
+        return None
     return {
         "project": positional[0],
         "out": positional[1],

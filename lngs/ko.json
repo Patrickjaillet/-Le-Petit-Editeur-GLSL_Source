@@ -291,6 +291,8 @@
       "min": "최소",
       "max": "최대",
       "decimals": "소수 자릿수",
+      "step": "단계",
+      "step_auto": "자동",
       "menu_edit": "최소/최대 수정…"
     },
     "keyframe_curve": {

@@ -42,9 +42,18 @@ spin.setValue(12.34)
 
 layout = panel.export_layout()
 print("exported layout:", layout)
+# Row 1's `step` (0.004) is the auto-step computed for its *original*
+# 0..4.0 range at rebuild time -- this simulates a raw `setMinimum`/
+# `setMaximum` call bypassing `_edit_range` (which would also recompute
+# `singleStep` for the new range), so `spin.singleStep()` no longer
+# matches what `export_layout` would derive as "auto" for the new -50..50
+# range, and gets exported as an explicit override. That's the intended
+# behavior: whatever `singleStep()` a slider actually carries is treated
+# as deliberate the moment it stops matching the freshly-recomputed auto
+# value for its current range.
 assert layout == [
     {"category": "Global", "kind": "float", "index": 0, "min": 0.0, "max": 2.0, "decimals": 4},
-    {"category": "Global", "kind": "float", "index": 1, "min": -50.0, "max": 50.0, "decimals": 2},
+    {"category": "Global", "kind": "float", "index": 1, "min": -50.0, "max": 50.0, "decimals": 2, "step": 0.004},
     {"category": "Global", "kind": "int", "index": 0, "min": 0, "max": 6},
 ], "unexpected layout export"
 
@@ -85,6 +94,42 @@ print("stale-layout row0: min=%s max=%s" % (spin_only.minimum(), spin_only.maxim
 assert spin_only.minimum() == 0.0 and spin_only.maximum() == 2.0  # matched index 0 fine (identical here)
 
 print("ALL OK")
+
+# ---- editable step, independent of min/max -----------------------------
+
+panel2 = SlidersPanel()
+src4 = "float a = 1.0;"
+sliders4 = Sliders(floats=[FakeFloat(10, 13, 1.0, 0.0, 2.0, "Global")], ints=[])
+panel2.rebuild(src4, sliders4)
+_, step_spin = panel2._rows[0]
+auto_step = step_spin.singleStep()
+assert abs(auto_step - 2.0 / 1000) < 1e-9, "a freshly built slider should start on the auto step"
+
+# An explicit step override (what `_edit_range` does when the dialog's
+# step field is non-zero) must be picked up by export_layout...
+step_spin.setSingleStep(0.25)
+layout2 = panel2.export_layout()
+assert layout2 == [{"category": "Global", "kind": "float", "index": 0, "min": 0.0, "max": 2.0, "decimals": 4, "step": 0.25}]
+print("explicit step override exported: ok")
+
+# ...and restored verbatim across a structural rebuild, exactly like
+# min/max/decimals already are.
+sliders4b = Sliders(floats=[FakeFloat(10, 13, 1.5, 0.0, 3.0, "Global")], ints=[])
+panel2.rebuild(src4, sliders4b)
+panel2.apply_layout(layout2)
+_, step_spin2 = panel2._rows[0]
+assert abs(step_spin2.singleStep() - 0.25) < 1e-9, "step override must survive a structural rebuild"
+print("explicit step override survives structural rebuild: ok")
+
+# A layout entry with no `step` key (old projects saved before this
+# feature existed) must fall back to the auto step for the *new* range,
+# not crash and not keep whatever step happened to be set before.
+layout_no_step = [{"category": "Global", "kind": "float", "index": 0, "min": 0.0, "max": 4.0, "decimals": 4}]
+panel2.rebuild(src4, sliders4b)
+panel2.apply_layout(layout_no_step)
+_, step_spin3 = panel2._rows[0]
+assert abs(step_spin3.singleStep() - 4.0 / 1000) < 1e-9, "missing 'step' key must fall back to the auto step for the new range"
+print("missing 'step' key in old layouts falls back to auto: ok")
 
 # ---- keyframing --------------------------------------------------------
 

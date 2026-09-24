@@ -471,6 +471,9 @@ class SlidersPanel(QTabWidget):
             }
             if state.kind == "float":
                 entry["decimals"] = spin.decimals()
+                auto_step = (spin.maximum() - spin.minimum()) / SLIDER_STEPS if spin.maximum() > spin.minimum() else 0.01
+                if abs(spin.singleStep() - auto_step) >= 1e-9:
+                    entry["step"] = spin.singleStep()
             if state.keyframes:
                 entry["keyframes"] = [[t, v] for t, v in state.keyframes]
                 if state.curve != KEYFRAME_CURVE_LINEAR:
@@ -539,7 +542,11 @@ class SlidersPanel(QTabWidget):
                     spin.setDecimals(decimals)
                 spin.setMinimum(new_min)
                 spin.setMaximum(new_max)
-                spin.setSingleStep((new_max - new_min) / SLIDER_STEPS)
+                step = entry.get("step")
+                if isinstance(step, (int, float)) and math.isfinite(step) and step > 0.0:
+                    spin.setSingleStep(float(step))
+                else:
+                    spin.setSingleStep((new_max - new_min) / SLIDER_STEPS)
                 spin.setValue(value)
             spin.blockSignals(False)
             self._set_slider_from_value(slider, new_min, new_max, value)
@@ -934,9 +941,24 @@ class SlidersPanel(QTabWidget):
         decimals_box.setRange(0, 8)
         decimals_box.setValue(spin.decimals())
 
+        # Step: independent of min/max, unlike the auto-derived
+        # `(max-min)/SLIDER_STEPS` used everywhere else in this file. `0`
+        # means "auto" (recomputed from the possibly-just-edited min/max
+        # above, same as before this override existed) -- an explicit
+        # positive value pins the spinbox's own increment (mouse wheel,
+        # keyboard arrows, Shift for the 10x step) regardless of range.
+        auto_step = (max_box.value() - min_box.value()) / SLIDER_STEPS if max_box.value() > min_box.value() else 0.01
+        is_auto_step = abs(spin.singleStep() - auto_step) < 1e-9
+        step_box = QDoubleSpinBox()
+        step_box.setRange(0.0, 1e9)
+        step_box.setDecimals(max(decimals_box.value(), 4))
+        step_box.setValue(0.0 if is_auto_step else spin.singleStep())
+        step_box.setSpecialValueText(tr("dialogs.slider_bounds.step_auto"))
+
         form.addRow(tr("dialogs.slider_bounds.min"), min_box)
         form.addRow(tr("dialogs.slider_bounds.max"), max_box)
         form.addRow(tr("dialogs.slider_bounds.decimals"), decimals_box)
+        form.addRow(tr("dialogs.slider_bounds.step"), step_box)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(dialog.accept)
@@ -955,7 +977,8 @@ class SlidersPanel(QTabWidget):
         spin.setDecimals(decimals_box.value())
         spin.setMinimum(new_min)
         spin.setMaximum(new_max)
-        spin.setSingleStep((new_max - new_min) / SLIDER_STEPS)
+        new_step = step_box.value()
+        spin.setSingleStep(new_step if new_step > 0.0 else (new_max - new_min) / SLIDER_STEPS)
         spin.setValue(value)
         spin.blockSignals(False)
         self._set_slider_from_value(slider, new_min, new_max, value)

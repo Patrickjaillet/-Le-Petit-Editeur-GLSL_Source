@@ -291,6 +291,8 @@
       "min": "Min",
       "max": "Maks",
       "decimals": "Desimaler",
+      "step": "Steg",
+      "step_auto": "Automatisk",
       "menu_edit": "Rediger min / maks…"
     },
     "keyframe_curve": {

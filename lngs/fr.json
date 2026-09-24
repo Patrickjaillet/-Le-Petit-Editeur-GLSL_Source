@@ -291,6 +291,8 @@
       "min": "Min",
       "max": "Max",
       "decimals": "Décimales",
+      "step": "Pas",
+      "step_auto": "Automatique",
       "menu_edit": "Modifier min / max…"
     },
     "keyframe_curve": {
