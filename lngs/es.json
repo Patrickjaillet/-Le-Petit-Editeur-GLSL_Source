@@ -59,6 +59,9 @@
     "play_pause_tooltip": "Reproducir/pausar el tiempo (iTime) — también anima los deslizadores con fotogramas clave",
     "reset_time": "Reiniciar el tiempo",
     "reset_time_tooltip": "Reinicia iTime a 0 — útil para reproducir una secuencia de fotogramas clave desde el principio",
+    "record_mouse": "🖱 Grabar trayecto del ratón",
+    "record_mouse_stop": "⏹ Detener grabación",
+    "record_mouse_tooltip": "Graba el movimiento del ratón para reproducirlo durante la exportación de vídeo (iMouse)",
     "golf": "Golf 🏌",
     "degolf": "Desgolf 🧹",
     "degolf_tooltip": "Reformatea el código (sangría, una instrucción por línea, espaciado) sin renombrar nada ni cambiar su comportamiento"
@@ -87,7 +90,8 @@
     "toolbar.reset_time": "Barra de herramientas: Reiniciar el tiempo",
     "toolbar.golf": "Barra de herramientas: Golf",
     "edit.degolf": "Edición: Desgolfear el código",
-    "toolbar.degolf": "Barra de herramientas: Desgolf"
+    "toolbar.degolf": "Barra de herramientas: Desgolf",
+    "toolbar.record_mouse": "Barra de herramientas: Grabar trayecto del ratón"
   },
   "dialogs": {
     "common": {
@@ -335,7 +339,12 @@
       "title": "Tarjeta gráfica no compatible",
       "body": "No se pudo iniciar: no se encontró ninguna tarjeta gráfica compatible en este equipo.\n\nIntente actualizar los controladores de su tarjeta gráfica y vuelva a abrir el programa.\n\nDetalle técnico: {error}"
     },
-    "viewport_resize_error": "Vista previa no redimensionada (memoria gráfica insuficiente): {error}"
+    "viewport_resize_error": "Vista previa no redimensionada (memoria gráfica insuficiente): {error}",
+    "microphone_error": {
+      "title": "Micrófono",
+      "no_microphone": "No se detectó ningún micrófono en este equipo.",
+      "microphone_prompt": "Micrófono para iChannel{index}:"
+    }
   },
   "sliders_panel": {
     "filter_placeholder": "Filtrar…",
@@ -377,6 +386,7 @@
     "source_image": "Imagen (archivo)",
     "source_video": "Vídeo (archivo)…",
     "source_audio": "Audio (archivo)…",
+    "source_microphone": "Micrófono",
     "source_webcam": "Webcam",
     "source_cubemap": "Cubemap (6 imágenes)",
     "source_keyboard": "Teclado (iKeyboard)",
@@ -387,7 +397,10 @@
     "change_cubemap": "Editar caras…",
     "change_video": "Cambiar vídeo…",
     "change_audio": "Cambiar audio…",
+    "change_microphone": "Cambiar micrófono…",
     "volume_tooltip": "Volumen de la entrada de audio (independiente del volumen del sistema)",
+    "audio_gain_label": "Ganancia",
+    "audio_gain_tooltip": "Desplazamiento de ganancia (dB) aplicado antes de normalizar el espectro — ajústelo a ojo/oído, la escala exacta de shadertoy.com no está publicada",
     "mute_tooltip": "Silenciar",
     "procedural_scale_label": "Tamaño del patrón",
     "procedural_scale_tooltip": "Tamaño del patrón (número de celdas / resolución de la cuadrícula de ruido)",
@@ -398,9 +411,11 @@
     "choose_audio": "Elegir un archivo de audio para iChannel{index}",
     "choose_image": "Elegir una imagen para iChannel{index}",
     "procedural_suffix": "{label} (procedural)",
+    "procedural_cubemap_suffix": "{label} (cubemap procedural)",
     "thumb_empty": "vacío",
     "thumb_cube": "CUBO",
     "default_webcam_tooltip": "webcam predeterminada",
+    "default_microphone_tooltip": "micrófono predeterminado",
     "source_lost_tooltip": "Fuente perdida: {message}"
   },
   "footer": {

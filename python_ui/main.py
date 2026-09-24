@@ -23,7 +23,7 @@ if sys.stdout is None or sys.stderr is None:
     if sys.stdin is None:
         sys.stdin = open(os.devnull, "r")
 
-from PySide6.QtCore import QLocale, QSettings
+from PySide6.QtCore import Qt, QLocale, QSettings
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 import i18n
@@ -68,6 +68,20 @@ def main() -> int:
     app.setApplicationName("PetitEditeurGLSL")
     apply_glass_theme(app)
     i18n.load_language(_startup_language_code())
+    # RESTE.md: "support RTL (langues écrites de droite à gauche) —
+    # délibérément hors scope". None of the 12 shipped languages are RTL
+    # today, but a future one (Arabic, Hebrew, Farsi, Urdu, ...) opts in
+    # via its own `_meta.rtl: true` (see `i18n.active_language_is_rtl`),
+    # picked up automatically here -- `setLayoutDirection` mirrors the
+    # whole widget tree (menus, toolbars, dialogs, form label/field
+    # order) the same way Qt's own RTL locales already do for apps that
+    # don't otherwise customize layout direction. Applied once at startup,
+    # right after the language that determines it is loaded -- same
+    # "takes effect on next launch" contract the language *picker*
+    # itself already has (see `_on_preferences`'s restart notice in
+    # `ui/main_window.py`), for the same reason: retrofitting a layout
+    # direction flip onto an already-built widget tree isn't attempted.
+    app.setLayoutDirection(Qt.RightToLeft if i18n.active_language_is_rtl() else Qt.LeftToRight)
     # RM10.md section 1, item 7: `renderer::Engine::new` (built inside
     # `MainWindow.__init__`) already returns a proper `RuntimeError` --
     # never panics -- when no usable graphics adapter/device can be

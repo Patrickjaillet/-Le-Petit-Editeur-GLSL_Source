@@ -59,6 +59,9 @@
     "play_pause_tooltip": "Riproduci/pausa il tempo (iTime) — anima anche gli slider con fotogrammi chiave",
     "reset_time": "Reimposta il tempo",
     "reset_time_tooltip": "Reimposta iTime a 0 — utile per riprodurre una sequenza di fotogrammi chiave dall'inizio",
+    "record_mouse": "🖱 Registra percorso mouse",
+    "record_mouse_stop": "⏹ Ferma registrazione",
+    "record_mouse_tooltip": "Registra il movimento del mouse per riprodurlo durante l'esportazione video (iMouse)",
     "golf": "Golf 🏌",
     "degolf": "Sgolfa 🧹",
     "degolf_tooltip": "Riformatta il codice (indentazione, un'istruzione per riga, spaziatura) senza rinominare nulla né cambiarne il comportamento"
@@ -87,7 +90,8 @@
     "toolbar.reset_time": "Barra degli strumenti: Reimposta il tempo",
     "toolbar.golf": "Barra degli strumenti: Golf",
     "edit.degolf": "Modifica: Sgolfa il codice",
-    "toolbar.degolf": "Barra degli strumenti: Sgolfa"
+    "toolbar.degolf": "Barra degli strumenti: Sgolfa",
+    "toolbar.record_mouse": "Barra degli strumenti: Registra percorso mouse"
   },
   "dialogs": {
     "common": {
@@ -335,7 +339,12 @@
       "title": "Scheda grafica non supportata",
       "body": "Impossibile avviare: nessuna scheda grafica compatibile trovata su questo computer.\n\nProva ad aggiornare i driver della scheda grafica, poi riavvia il programma.\n\nDettaglio tecnico: {error}"
     },
-    "viewport_resize_error": "Anteprima non ridimensionata (memoria grafica insufficiente): {error}"
+    "viewport_resize_error": "Anteprima non ridimensionata (memoria grafica insufficiente): {error}",
+    "microphone_error": {
+      "title": "Microfono",
+      "no_microphone": "Nessun microfono rilevato su questo computer.",
+      "microphone_prompt": "Microfono per iChannel{index}:"
+    }
   },
   "sliders_panel": {
     "filter_placeholder": "Filtra…",
@@ -377,6 +386,7 @@
     "source_image": "Immagine (file)",
     "source_video": "Video (file)…",
     "source_audio": "Audio (file)…",
+    "source_microphone": "Microfono",
     "source_webcam": "Webcam",
     "source_cubemap": "Cubemap (6 immagini)",
     "source_keyboard": "Tastiera (iKeyboard)",
@@ -387,7 +397,10 @@
     "change_cubemap": "Modifica facce…",
     "change_video": "Cambia video…",
     "change_audio": "Cambia audio…",
+    "change_microphone": "Cambia microfono…",
     "volume_tooltip": "Volume dell'ingresso audio (indipendente dal volume di sistema)",
+    "audio_gain_label": "Guadagno",
+    "audio_gain_tooltip": "Offset di guadagno (dB) applicato prima della normalizzazione dello spettro — regola a occhio/orecchio, la scala esatta di shadertoy.com non è pubblicata",
     "mute_tooltip": "Muto",
     "procedural_scale_label": "Dimensione del motivo",
     "procedural_scale_tooltip": "Dimensione del motivo (numero di celle / risoluzione della griglia di rumore)",
@@ -398,9 +411,11 @@
     "choose_audio": "Scegli un file audio per iChannel{index}",
     "choose_image": "Scegli un'immagine per iChannel{index}",
     "procedural_suffix": "{label} (procedurale)",
+    "procedural_cubemap_suffix": "{label} (cubemap procedurale)",
     "thumb_empty": "vuoto",
     "thumb_cube": "CUBO",
     "default_webcam_tooltip": "webcam predefinita",
+    "default_microphone_tooltip": "microfono predefinito",
     "source_lost_tooltip": "Sorgente persa: {message}"
   },
   "footer": {

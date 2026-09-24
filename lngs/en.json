@@ -59,6 +59,9 @@
     "play_pause_tooltip": "Play/pause time (iTime) — also animates sliders that have keyframes",
     "reset_time": "Reset time",
     "reset_time_tooltip": "Resets iTime to 0 — useful to replay a keyframe sequence from the start",
+    "record_mouse": "🖱 Record mouse path",
+    "record_mouse_stop": "⏹ Stop recording",
+    "record_mouse_tooltip": "Records mouse movement to replay it during video export (iMouse)",
     "golf": "Golf 🏌",
     "degolf": "Un-golf 🧹",
     "degolf_tooltip": "Reformats the code (indentation, one statement per line, spacing) without renaming anything or changing its behavior"
@@ -87,7 +90,8 @@
     "toolbar.play_pause": "Toolbar: Play/Pause",
     "toolbar.reset_time": "Toolbar: Reset time",
     "toolbar.golf": "Toolbar: Golf",
-    "toolbar.degolf": "Toolbar: Un-golf"
+    "toolbar.degolf": "Toolbar: Un-golf",
+    "toolbar.record_mouse": "Toolbar: Record mouse path"
   },
   "dialogs": {
     "common": {
@@ -335,7 +339,12 @@
       "title": "Unsupported graphics card",
       "body": "Couldn't start: no compatible graphics card was found on this computer.\n\nTry updating your graphics card drivers, then relaunch the software.\n\nTechnical detail: {error}"
     },
-    "viewport_resize_error": "Preview not resized (insufficient graphics memory): {error}"
+    "viewport_resize_error": "Preview not resized (insufficient graphics memory): {error}",
+    "microphone_error": {
+      "title": "Microphone",
+      "no_microphone": "No microphone detected on this machine.",
+      "microphone_prompt": "Microphone for iChannel{index}:"
+    }
   },
   "sliders_panel": {
     "filter_placeholder": "Filter…",
@@ -377,6 +386,7 @@
     "source_image": "Image (file)",
     "source_video": "Video (file)…",
     "source_audio": "Audio (file)…",
+    "source_microphone": "Microphone",
     "source_webcam": "Webcam",
     "source_cubemap": "Cubemap (6 images)",
     "source_keyboard": "Keyboard (iKeyboard)",
@@ -387,7 +397,10 @@
     "change_cubemap": "Edit faces…",
     "change_video": "Change video…",
     "change_audio": "Change audio…",
+    "change_microphone": "Change microphone…",
     "volume_tooltip": "Audio input volume (independent of the system volume)",
+    "audio_gain_label": "Gain",
+    "audio_gain_tooltip": "Gain offset (dB) applied before spectrum normalization — adjust by eye/ear, shadertoy.com's exact scale isn't published",
     "mute_tooltip": "Mute",
     "procedural_scale_label": "Pattern size",
     "procedural_scale_tooltip": "Pattern size (cell count / noise grid resolution)",
@@ -398,9 +411,11 @@
     "choose_audio": "Choose an audio file for iChannel{index}",
     "choose_image": "Choose an image for iChannel{index}",
     "procedural_suffix": "{label} (procedural)",
+    "procedural_cubemap_suffix": "{label} (procedural cubemap)",
     "thumb_empty": "empty",
     "thumb_cube": "CUBE",
     "default_webcam_tooltip": "default webcam",
+    "default_microphone_tooltip": "default microphone",
     "source_lost_tooltip": "Source lost: {message}"
   },
   "footer": {

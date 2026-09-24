@@ -59,6 +59,9 @@
     "play_pause_tooltip": "時間 (iTime) を再生/一時停止 — キーフレームを持つスライダーもアニメーションします",
     "reset_time": "時間をリセット",
     "reset_time_tooltip": "iTime を 0 にリセットします — キーフレームシーケンスを最初から再生し直すのに便利です",
+    "record_mouse": "🖱 マウス軌跡を記録",
+    "record_mouse_stop": "⏹ 記録を停止",
+    "record_mouse_tooltip": "動画書き出し中に再生するためマウスの動きを記録します (iMouse)",
     "golf": "ゴルフ 🏌",
     "degolf": "整形 🧹",
     "degolf_tooltip": "コードを再フォーマットします(インデント、1行1文、スペース)。名前の変更や動作の変更は行いません"
@@ -87,7 +90,8 @@
     "toolbar.reset_time": "ツールバー: 時間をリセット",
     "toolbar.golf": "ツールバー: ゴルフ",
     "edit.degolf": "編集: コードを整形",
-    "toolbar.degolf": "ツールバー: 整形"
+    "toolbar.degolf": "ツールバー: 整形",
+    "toolbar.record_mouse": "ツールバー: マウス軌跡を記録"
   },
   "dialogs": {
     "common": {
@@ -335,7 +339,12 @@
       "title": "グラフィックカードがサポートされていません",
       "body": "起動できませんでした。このコンピューターには対応するグラフィックカードが見つかりません。\n\nグラフィックカードのドライバーを更新してから、ソフトウェアを再起動してください。\n\n技術詳細: {error}"
     },
-    "viewport_resize_error": "プレビューのサイズは変更されませんでした（グラフィックメモリ不足）: {error}"
+    "viewport_resize_error": "プレビューのサイズは変更されませんでした（グラフィックメモリ不足）: {error}",
+    "microphone_error": {
+      "title": "マイク",
+      "no_microphone": "このマシンにマイクが見つかりません。",
+      "microphone_prompt": "iChannel{index} 用マイク:"
+    }
   },
   "sliders_panel": {
     "filter_placeholder": "絞り込み…",
@@ -377,6 +386,7 @@
     "source_image": "画像(ファイル)",
     "source_video": "動画(ファイル)…",
     "source_audio": "オーディオ(ファイル)…",
+    "source_microphone": "マイク",
     "source_webcam": "ウェブカメラ",
     "source_cubemap": "キューブマップ(6画像)",
     "source_keyboard": "キーボード (iKeyboard)",
@@ -387,7 +397,10 @@
     "change_cubemap": "面を編集…",
     "change_video": "動画を変更…",
     "change_audio": "オーディオを変更…",
+    "change_microphone": "マイクを変更…",
     "volume_tooltip": "オーディオ入力の音量（システム音量とは独立）",
+    "audio_gain_label": "ゲイン",
+    "audio_gain_tooltip": "スペクトル正規化前に適用されるゲインオフセット (dB) — shadertoy.com の正確なスケールは公開されていないため、目や耳で調整してください",
     "mute_tooltip": "ミュート",
     "procedural_scale_label": "パターンサイズ",
     "procedural_scale_tooltip": "パターンサイズ（セル数／ノイズグリッドの解像度）",
@@ -398,9 +411,11 @@
     "choose_audio": "iChannel{index} 用のオーディオファイルを選択",
     "choose_image": "iChannel{index} 用の画像を選択",
     "procedural_suffix": "{label}(プロシージャル)",
+    "procedural_cubemap_suffix": "{label} (プロシージャル・キューブマップ)",
     "thumb_empty": "空",
     "thumb_cube": "CUBE",
     "default_webcam_tooltip": "既定のウェブカメラ",
+    "default_microphone_tooltip": "デフォルトのマイク",
     "source_lost_tooltip": "ソースが失われました: {message}"
   },
   "footer": {

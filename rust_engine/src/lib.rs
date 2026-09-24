@@ -184,6 +184,18 @@ impl Engine {
         self.inner.set_ichannel_cubemap(pass, index, &paths).map_err(to_py_err)
     }
 
+    /// Points a pass's iChannel slot at a full 6-face cubemap generated
+    /// from a built-in procedural preset (`"checker"`, `"white_noise"`,
+    /// `"value_noise"`) instead of 6 loaded image files — same presets and
+    /// `scale`/`seed` defaults as `set_ichannel_procedural`, applied to
+    /// all 6 faces (each noise face gets its own derived seed so the 6
+    /// faces don't look like the same square pasted 6 times — see
+    /// `texture::ChannelTexture::procedural_cubemap`).
+    #[pyo3(signature = (pass, index, kind, scale=8, seed=0))]
+    fn set_ichannel_procedural_cubemap(&mut self, pass: usize, index: u32, kind: &str, scale: u32, seed: u32) -> PyResult<()> {
+        self.inner.set_ichannel_procedural_cubemap(pass, index, kind, scale, seed).map_err(to_py_err)
+    }
+
     /// Points a pass's iChannel slot at the shared `iKeyboard` texture
     /// (256x3: row 0 = key down, row 1 = pressed this frame, row 2 =
     /// toggled), matching Shadertoy's "Keyboard" iChannel source option.

@@ -48,7 +48,7 @@ from ui.monaco_editor import MonacoEditor
 from ui.shortcuts_dialog import ShortcutsDialog
 from ui.sliders_panel import SlidersPanel
 from ui.viewport import VIEWPORT_HEIGHT, VIEWPORT_WIDTH, Viewport
-from audio_source import AudioChannelSource
+from audio_source import AudioChannelSource, MicrophoneChannelSource
 from video_source import VideoChannelSource
 
 DEFAULT_SHADER_PATH = Path(__file__).resolve().parent.parent / "assets" / "shaders" / "default.frag"
@@ -346,6 +346,18 @@ class MainWindow(QMainWindow):
         reset_time_action.triggered.connect(lambda: self.viewport.reset_time())
         toolbar.addAction(reset_time_action)
 
+        # RESTE.md: "pas d'enregistrement du trajet de la souris pendant
+        # l'export" -- toggled on/off like play/pause, drives
+        # `Viewport.start_mouse_recording`/`stop_mouse_recording` directly
+        # rather than going through a dedicated "record mode" concept:
+        # the recorded trajectory (if any) is picked up automatically by
+        # `_on_export_video` the next time an export runs.
+        self._record_mouse_action = reg("toolbar.record_mouse", QAction(tr("toolbar.record_mouse"), self))
+        self._record_mouse_action.setCheckable(True)
+        self._record_mouse_action.setToolTip(tr("toolbar.record_mouse_tooltip"))
+        self._record_mouse_action.toggled.connect(self._on_record_mouse_toggled)
+        toolbar.addAction(self._record_mouse_action)
+
         toolbar.addSeparator()
 
         golf_action = reg("toolbar.golf", QAction(tr("toolbar.golf"), self))
@@ -405,6 +417,7 @@ class MainWindow(QMainWindow):
         self.ichannel_panel.assignmentChanged.connect(self._on_ichannel_assignment_changed)
         self.ichannel_panel.audioSettingsChanged.connect(self._on_ichannel_audio_settings_changed)
         self.ichannel_panel.proceduralSettingsChanged.connect(self._on_ichannel_procedural_settings_changed)
+        self.ichannel_panel.gainChanged.connect(self._on_ichannel_gain_changed)
         self.sliders_panel.literalEdited.connect(self._on_literal_edited)
         self.sliders_panel.dragFinished.connect(self._on_slider_drag_finished)
 
@@ -692,6 +705,14 @@ class MainWindow(QMainWindow):
     def _on_play_toggled(self, paused: bool) -> None:
         self.viewport.set_paused(paused)
         self._play_action.setText(tr("toolbar.play") if paused else tr("toolbar.pause"))
+
+    def _on_record_mouse_toggled(self, recording: bool) -> None:
+        if recording:
+            self.viewport.start_mouse_recording()
+            self._record_mouse_action.setText(tr("toolbar.record_mouse_stop"))
+        else:
+            self.viewport.stop_mouse_recording()
+            self._record_mouse_action.setText(tr("toolbar.record_mouse"))
 
     @staticmethod
     def _add_transform_row(
@@ -1682,6 +1703,15 @@ class MainWindow(QMainWindow):
         # frame — or a queued debounced resize — in between resizing the
         # shared `Engine` to the export resolution and resizing it back,
         # or it would read pixels sized for the wrong resolution.
+        # A recording still in progress when Export is triggered is
+        # stopped first, same as any other "finalize before use" pattern
+        # in this codebase -- exporting mid-recording would otherwise
+        # silently use whatever partial trajectory happened to exist yet.
+        if self._record_mouse_action.isChecked():
+            self._record_mouse_action.setChecked(False)
+        trajectory = self.viewport.mouse_trajectory()
+        export_mouse = trajectory if trajectory else video_export.FIXED_MOUSE
+
         self.viewport.suspend_for_external_render()
         try:
             # RM10.md section 1, item 8: `resize` can still fail here even
@@ -1707,6 +1737,7 @@ class MainWindow(QMainWindow):
                     export.crf,
                     self.viewport.current_date(),
                     path,
+                    mouse=export_mouse,
                     audio_path=export.audio_path,
                     audio_volume_db=export.audio_volume_db,
                     audio_start_offset=export.audio_start_offset,
@@ -1896,6 +1927,8 @@ class MainWindow(QMainWindow):
                 self._start_video_channel(pass_idx, channel_idx, value)
             elif kind == "audio":
                 self._start_audio_channel(pass_idx, channel_idx, value)
+            elif kind == "microphone":
+                self._start_microphone_channel(pass_idx, channel_idx, value)
             elif kind == "webcam":
                 self._start_webcam_channel(pass_idx, channel_idx, value)
             elif kind == "cubemap":
@@ -1903,6 +1936,9 @@ class MainWindow(QMainWindow):
             elif kind == "procedural":
                 scale, seed = self.ichannel_panel.procedural_settings_for(pass_idx, channel_idx)
                 self._engine.set_ichannel_procedural(pass_idx, channel_idx, value, scale, seed)
+            elif kind == "procedural_cubemap":
+                scale, seed = self.ichannel_panel.procedural_settings_for(pass_idx, channel_idx)
+                self._engine.set_ichannel_procedural_cubemap(pass_idx, channel_idx, value, scale, seed)
             elif kind == "buffer":
                 self._engine.set_ichannel_buffer(pass_idx, channel_idx, value)
             elif kind == "keyboard":
@@ -1911,6 +1947,18 @@ class MainWindow(QMainWindow):
                 self._engine.clear_ichannel(pass_idx, channel_idx)
         except RuntimeError as exc:
             QMessageBox.warning(self, tr("dialogs.ichannel_error.title"), str(exc))
+
+    def _on_ichannel_gain_changed(self, pass_idx: int, channel_idx: int, gain_db: float) -> None:
+        """RESTE.md: live gain offset (dB) for an audio/microphone
+        iChannel slot, adjusted from the textures panel -- the user's own
+        compensation for the unverifiable shadertoy.com FFT scaling (see
+        `_AudioAnalysisMixin._init_analysis`'s docstring). A no-op if this
+        slot has no active source right now, same "recorded, applied the
+        moment a source does start" contract as
+        `_on_ichannel_audio_settings_changed`."""
+        source = self._audio_sources.get((pass_idx, channel_idx))
+        if source is not None:
+            source.set_gain_db(gain_db)
 
     def _start_video_channel(self, pass_idx: int, channel_idx: int, path: str) -> None:
         """Allocates the engine-side placeholder for a video-file iChannel
@@ -2025,11 +2073,38 @@ class MainWindow(QMainWindow):
         volume, muted = self.ichannel_panel.audio_settings_for(pass_idx, channel_idx)
         source.set_volume(volume)
         source.set_muted(muted)
+        source.set_gain_db(self.ichannel_panel.gain_for(pass_idx, channel_idx))
         self._audio_sources[(pass_idx, channel_idx)] = source
         try:
             source.start(path)
         except Exception as exc:  # noqa: BLE001 - Qt's own playback errors vary in type
             QMessageBox.warning(self, tr("dialogs.audio_error.title"), tr("dialogs.audio_error.body", path=path, error=exc))
+
+    def _start_microphone_channel(self, pass_idx: int, channel_idx: int, device_id: str) -> None:
+        """Live mic capture as an iChannel audio source (RESTE.md: "entrée
+        microphone en direct... à faire au besoin dans un ticket dédié une
+        fois l'audio fichier en place et éprouvé" -- that ticket). Reuses
+        `self._audio_sources` (same dict as file-based audio channels, not
+        a separate one): `_on_audio_tick`/`_stop_audio_channel`/
+        `_on_source_lost` already only care about `compute_frame()`/
+        `position_seconds()`/`is_active()`/`sourceLost`, all of which
+        `MicrophoneChannelSource` implements identically to
+        `AudioChannelSource` -- no kind check needed anywhere else. Same
+        engine call as file-based audio (`set_ichannel_audio`): a mic is
+        just another producer of the same 512x2 texture at the Rust side,
+        see `MicrophoneChannelSource`'s own docstring for why it's never
+        played back audibly, unlike the file-based channel."""
+        try:
+            self._engine.set_ichannel_audio(pass_idx, channel_idx)
+        except RuntimeError as exc:
+            QMessageBox.warning(self, tr("dialogs.ichannel_error.title"), str(exc))
+            return
+        source = MicrophoneChannelSource(self)
+        source.sourceLost.connect(lambda msg, p=pass_idx, c=channel_idx: self._on_source_lost(p, c, msg))
+        source.set_gain_db(self.ichannel_panel.gain_for(pass_idx, channel_idx))
+        self._audio_sources[(pass_idx, channel_idx)] = source
+        if not source.start(device_id):
+            QMessageBox.warning(self, tr("dialogs.microphone_error.title"), tr("dialogs.microphone_error.no_microphone"))
 
     def _on_source_lost(self, pass_idx: int, channel_idx: int, message: str) -> None:
         """RM10.md section 1, item 6: a webcam/video/audio source that was
@@ -2122,7 +2197,12 @@ class MainWindow(QMainWindow):
         in `IChannelPanel` and applied the moment a source does start, see
         `_start_audio_channel`."""
         source = self._audio_sources.get((pass_idx, channel_idx))
-        if source is not None:
+        # `MicrophoneChannelSource` has no volume/mute (never played back
+        # audibly, see its own docstring) -- its combo entry hides the
+        # volume row entirely, so this shouldn't normally fire for one,
+        # but `isinstance` here costs nothing and avoids a hard crash if
+        # it somehow does.
+        if isinstance(source, AudioChannelSource):
             source.set_volume(volume)
             source.set_muted(muted)
 
@@ -2135,9 +2215,12 @@ class MainWindow(QMainWindow):
         update in place -- a procedural texture is just regenerated and
         re-uploaded outright, same call as a fresh assignment."""
         kind, value = self.ichannel_panel.state_for(pass_idx, channel_idx)
-        if kind != "procedural":
+        if kind not in ("procedural", "procedural_cubemap"):
             return
         try:
-            self._engine.set_ichannel_procedural(pass_idx, channel_idx, value, scale, seed)
+            if kind == "procedural":
+                self._engine.set_ichannel_procedural(pass_idx, channel_idx, value, scale, seed)
+            else:
+                self._engine.set_ichannel_procedural_cubemap(pass_idx, channel_idx, value, scale, seed)
         except RuntimeError as exc:
             QMessageBox.warning(self, tr("dialogs.ichannel_error.title"), str(exc))

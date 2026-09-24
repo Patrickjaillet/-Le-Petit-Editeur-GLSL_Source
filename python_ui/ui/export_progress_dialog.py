@@ -61,6 +61,7 @@ class ExportProgressDialog(QDialog):
 
     def __init__(
         self, engine, n_frames: int, fps: float, width: int, height: int, crf: int, date: tuple, out_path: str,
+        mouse=video_export.FIXED_MOUSE,
         audio_path: str | None = None, audio_volume_db: float = 0.0, audio_start_offset: float = 0.0,
         audio_loop: bool = True, audio_bitrate_kbps: int = video_export.DEFAULT_AUDIO_BITRATE_KBPS, parent=None,
     ):
@@ -76,6 +77,7 @@ class ExportProgressDialog(QDialog):
         self._crf = crf
         self._date = date
         self._out_path = out_path
+        self._mouse = mouse
         self._audio_path = audio_path
         self._audio_volume_db = audio_volume_db
         self._audio_start_offset = audio_start_offset
@@ -161,6 +163,7 @@ class ExportProgressDialog(QDialog):
                 self._crf,
                 self._date,
                 self._out_path,
+                mouse=self._mouse,
                 audio_path=self._audio_path,
                 audio_volume_db=self._audio_volume_db,
                 audio_start_offset=self._audio_start_offset,

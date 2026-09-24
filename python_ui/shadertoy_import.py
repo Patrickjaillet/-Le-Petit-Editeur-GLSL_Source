@@ -145,7 +145,14 @@ def _cubemap_face_urls(src: str) -> list[str]:
     exercised against a live API response in this environment (see the
     ROADMAP entry — no network egress to shadertoy.com from this sandbox)
     — if face order/naming ever turns out wrong for some shader, this is
-    the first place to check."""
+    the first place to check.
+
+    Re-confirmed still unverifiable (RESTE.md follow-up): this session's
+    network egress proxy explicitly denies `www.shadertoy.com` (403 on
+    CONNECT, both via a direct HTTPS request and via the WebFetch tool) --
+    org policy, not a transient outage. Nothing has changed since the
+    original note above; this remains the first place to check if a real
+    cubemap import ever turns out wrong."""
     if not src:
         return [""] * 6
     stem, sep, ext = src.rpartition(".")

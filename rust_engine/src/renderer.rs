@@ -882,6 +882,22 @@ impl Engine {
         self.set_channel_input(pass, index, ChannelInput::Cubemap(tex))
     }
 
+    /// Points a pass's iChannel slot at a full 6-face cubemap generated
+    /// from one of the built-in procedural presets (`"checker"`,
+    /// `"white_noise"`, `"value_noise"`) instead of 6 loaded image files —
+    /// see `ChannelTexture::procedural_cubemap`. Reuses `ChannelInput::
+    /// Cubemap` (same as `set_ichannel_cubemap`): a procedural cubemap is
+    /// still just a `Cube`-view texture at sample time, so no separate
+    /// `ChannelInput` variant or `ChannelKind` dispatch is needed for it.
+    pub fn set_ichannel_procedural_cubemap(
+        &mut self, pass: usize, index: u32, kind: &str, scale: u32, seed: u32,
+    ) -> Result<(), String> {
+        Self::check_pass_channel(pass, index)?;
+        let kind = ProceduralKind::from_str(kind)?;
+        let tex = ChannelTexture::procedural_cubemap(&self.device, &self.queue, kind, scale, seed);
+        self.set_channel_input(pass, index, ChannelInput::Cubemap(tex))
+    }
+
     /// Points a pass's iChannel slot at the shared `iKeyboard` texture,
     /// matching Shadertoy's "Keyboard" iChannel source option. No
     /// path/kind argument needed — there's only one keyboard, fed by

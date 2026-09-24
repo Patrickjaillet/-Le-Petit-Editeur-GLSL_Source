@@ -34,12 +34,15 @@ against known audio-reactive shaders rather than guaranteed bit-exact.
 from __future__ import annotations
 
 import numpy as np
-from PySide6.QtCore import QObject, QUrl, Signal
+from PySide6.QtCore import QIODevice, QObject, QUrl, Signal
 from PySide6.QtMultimedia import (
     QAudioBuffer,
     QAudioBufferOutput,
+    QAudioDevice,
     QAudioFormat,
     QAudioOutput,
+    QAudioSource,
+    QMediaDevices,
     QMediaPlayer,
 )
 
@@ -64,7 +67,103 @@ _DB_FLOOR = -60.0
 _DB_CEIL = 0.0
 
 
-class AudioChannelSource(QObject):
+def _decode_samples(raw: bytes, fmt: QAudioFormat) -> np.ndarray | None:
+    """Converts a raw `QAudioBuffer`/`QIODevice` PCM byte chunk to mono
+    `float32` samples in `[-1, 1]`, branching on `fmt.sampleFormat()` --
+    shared by `AudioChannelSource` (file/webcam-style decode via
+    `QAudioBufferOutput`) and `MicrophoneChannelSource` (live capture via
+    `QAudioSource`), which hand this the exact same shape of raw PCM bytes
+    from two different Qt Multimedia entry points. Returns `None` for an
+    unrecognized/empty format or channel count rather than raising --
+    every caller already treats "nothing decodable this tick" as a normal,
+    frequent occurrence (silence, a still-warming-up device, ...), not an
+    error."""
+    channels = fmt.channelCount()
+    if channels <= 0 or not raw:
+        return None
+    sample_format = fmt.sampleFormat()
+    if sample_format == QAudioFormat.SampleFormat.UInt8:
+        samples = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+    elif sample_format == QAudioFormat.SampleFormat.Int16:
+        samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+    elif sample_format == QAudioFormat.SampleFormat.Int32:
+        samples = np.frombuffer(raw, dtype=np.int32).astype(np.float32) / 2147483648.0
+    elif sample_format == QAudioFormat.SampleFormat.Float:
+        samples = np.frombuffer(raw, dtype=np.float32).copy()
+    else:
+        return None
+    if channels > 1:
+        usable = (samples.size // channels) * channels
+        samples = samples[:usable].reshape(-1, channels).mean(axis=1)
+    return samples if samples.size else None
+
+
+class _AudioAnalysisMixin:
+    """Shared rolling-buffer + FFT analysis, factored out of
+    `AudioChannelSource` so `MicrophoneChannelSource` (a live capture
+    source, not a decoded-file source) can reuse the exact same
+    `compute_frame()` -- a mic input is, from the shader's point of view,
+    just another iChannel audio texture fed by a different sample
+    producer. Expects the including class to also be a `QObject` (for
+    `Signal`, not defined here) and to call `self._push_samples(...)`
+    whenever new PCM samples arrive."""
+
+    def _init_analysis(self) -> None:
+        self._ring = np.zeros(_FFT_SIZE, dtype=np.float32)
+        # Precomputed once: same window every call, only the samples
+        # inside it change.
+        self._hann = np.hanning(_FFT_SIZE).astype(np.float32)
+        # RESTE.md: "calage bit-exact du spectre FFT" against
+        # shadertoy.com is unverifiable from this codebase (no published
+        # formula, and no network access to compare against a real
+        # reference render in this development environment either --
+        # see `shadertoy_import._cubemap_face_urls` for the identical
+        # constraint on a different feature). Rather than silently guess
+        # at different `_DB_FLOOR`/`_DB_CEIL` constants with no way to
+        # verify they're actually a better match, this exposes the gap
+        # the *user* can close: a live, per-source gain offset (dB) they
+        # can dial in by eye against their own audio-reactive shader,
+        # persisted per iChannel slot exactly like the existing
+        # procedural-texture scale/seed controls.
+        self._gain_db = 0.0
+
+    def set_gain_db(self, gain_db: float) -> None:
+        self._gain_db = gain_db
+
+    def _push_samples(self, samples: np.ndarray) -> None:
+        if samples.size >= _FFT_SIZE:
+            self._ring = samples[-_FFT_SIZE:].astype(np.float32, copy=True)
+        else:
+            self._ring = np.concatenate([self._ring[samples.size:], samples]).astype(np.float32)
+
+    def compute_frame(self) -> tuple[bytes, bytes]:
+        """FFTs the last `_FFT_SIZE` decoded samples (Hann-windowed to
+        limit spectral leakage) and returns `(spectrum_bytes, waveform_bytes)`,
+        each exactly 512 bytes -- ready to push straight into
+        `Engine.update_ichannel_audio_frame`. Returns silence (all zeros /
+        all mid-value) before any audio has actually been decoded yet,
+        same "defined data before the first real frame" convention as the
+        engine's own zero-filled `ChannelTexture::audio`."""
+        windowed = self._ring * self._hann
+        spectrum_full = np.abs(np.fft.rfft(windowed))  # _FFT_SIZE//2 + 1 bins
+        db = 20.0 * np.log10(spectrum_full + 1e-9) + self._gain_db
+        normalized = np.clip((db - _DB_FLOOR) / (_DB_CEIL - _DB_FLOOR), 0.0, 1.0)
+        # Drop the Nyquist bin (index _FFT_SIZE//2) so exactly 512 bands
+        # remain, one per texture column, low frequencies on the left --
+        # same layout Shadertoy uses.
+        spectrum_bytes = (normalized[:_TEXTURE_WIDTH] * 255.0).astype(np.uint8).tobytes()
+
+        # Waveform: the same analysis window, downsampled by a factor of 2
+        # (1024 samples -> 512 points), amplitude mapped from [-1,1] to
+        # [0,255] around a silence midpoint of 128 -- the same "R=G=B,
+        # 0-255" convention as the spectrum row and every other
+        # single-channel texture in this engine (iKeyboard included).
+        waveform = np.clip(self._ring[::2], -1.0, 1.0)
+        waveform_bytes = ((waveform * 127.0) + 128.0).astype(np.uint8).tobytes()
+        return spectrum_bytes, waveform_bytes
+
+
+class AudioChannelSource(_AudioAnalysisMixin, QObject):
     """One live iChannel audio source, bound to a single (pass, channel)
     slot by whoever constructs it -- same one-source-per-slot model as
     `video_source.VideoChannelSource`. Unlike that class, this one has no
@@ -84,13 +183,10 @@ class AudioChannelSource(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._init_analysis()
         self._player: QMediaPlayer | None = None
         self._audio_output: QAudioOutput | None = None
         self._buffer_output: QAudioBufferOutput | None = None
-        self._ring = np.zeros(_FFT_SIZE, dtype=np.float32)
-        # Precomputed once: same window every call, only the samples
-        # inside it change.
-        self._hann = np.hanning(_FFT_SIZE).astype(np.float32)
         # RM10.md section 5: independent of the system output volume (see
         # `start`'s docstring) -- kept here, not just on `_audio_output`
         # directly, because `start()` tears down and rebuilds a brand new
@@ -179,58 +275,123 @@ class AudioChannelSource(QObject):
         Fires on the Qt main thread, same as `VideoChannelSource._on_video_frame`
         -- kept cheap (no FFT here), the actual analysis happens on demand
         in `compute_frame()` instead of on every single decoded chunk."""
-        if not buffer.isValid():
+        if not buffer.isValid() or buffer.sampleCount() <= 0:
             return
-        fmt = buffer.format()
-        channels = fmt.channelCount()
-        if channels <= 0 or buffer.sampleCount() <= 0:
-            return
-        raw = bytes(buffer.constData())
-        sample_format = fmt.sampleFormat()
-        if sample_format == QAudioFormat.SampleFormat.UInt8:
-            samples = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
-        elif sample_format == QAudioFormat.SampleFormat.Int16:
-            samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-        elif sample_format == QAudioFormat.SampleFormat.Int32:
-            samples = np.frombuffer(raw, dtype=np.int32).astype(np.float32) / 2147483648.0
-        elif sample_format == QAudioFormat.SampleFormat.Float:
-            samples = np.frombuffer(raw, dtype=np.float32).copy()
-        else:
-            return
-        if channels > 1:
-            usable = (samples.size // channels) * channels
-            samples = samples[:usable].reshape(-1, channels).mean(axis=1)
-        if samples.size == 0:
-            return
-        if samples.size >= _FFT_SIZE:
-            self._ring = samples[-_FFT_SIZE:].astype(np.float32, copy=True)
-        else:
-            self._ring = np.concatenate([self._ring[samples.size:], samples]).astype(np.float32)
+        samples = _decode_samples(bytes(buffer.constData()), buffer.format())
+        if samples is not None:
+            self._push_samples(samples)
 
-    # ---- analysis -------------------------------------------------------
 
-    def compute_frame(self) -> tuple[bytes, bytes]:
-        """FFTs the last `_FFT_SIZE` decoded samples (Hann-windowed to
-        limit spectral leakage) and returns `(spectrum_bytes, waveform_bytes)`,
-        each exactly 512 bytes -- ready to push straight into
-        `Engine.update_ichannel_audio_frame`. Returns silence (all zeros /
-        all mid-value) before any audio has actually been decoded yet,
-        same "defined data before the first real frame" convention as the
-        engine's own zero-filled `ChannelTexture::audio`."""
-        windowed = self._ring * self._hann
-        spectrum_full = np.abs(np.fft.rfft(windowed))  # _FFT_SIZE//2 + 1 bins
-        db = 20.0 * np.log10(spectrum_full + 1e-9)
-        normalized = np.clip((db - _DB_FLOOR) / (_DB_CEIL - _DB_FLOOR), 0.0, 1.0)
-        # Drop the Nyquist bin (index _FFT_SIZE//2) so exactly 512 bands
-        # remain, one per texture column, low frequencies on the left --
-        # same layout Shadertoy uses.
-        spectrum_bytes = (normalized[:_TEXTURE_WIDTH] * 255.0).astype(np.uint8).tobytes()
+def list_microphones() -> list[tuple[str, str]]:
+    """`(device_id, human-readable description)` for every audio input
+    device Qt can currently see, for the microphone-picker dialog --
+    mirrors `video_source.list_cameras` exactly (same
+    `QMediaDevices.*Inputs()` pattern, same id/description shape stored in
+    the project file)."""
+    return [
+        (bytes(dev.id()).decode("utf-8", "replace"), dev.description())
+        for dev in QMediaDevices.audioInputs()
+    ]
 
-        # Waveform: the same analysis window, downsampled by a factor of 2
-        # (1024 samples -> 512 points), amplitude mapped from [-1,1] to
-        # [0,255] around a silence midpoint of 128 -- the same "R=G=B,
-        # 0-255" convention as the spectrum row and every other
-        # single-channel texture in this engine (iKeyboard included).
-        waveform = np.clip(self._ring[::2], -1.0, 1.0)
-        waveform_bytes = ((waveform * 127.0) + 128.0).astype(np.uint8).tobytes()
-        return spectrum_bytes, waveform_bytes
+
+class MicrophoneChannelSource(_AudioAnalysisMixin, QObject):
+    """Live microphone input as an iChannel audio source -- the `mic`
+    option on shadertoy.com's own audio channel, explicitly called out as
+    out of scope when the file-based audio channel was first built (no
+    `QAudioSource`/OS mic permission plumbing yet). Feeds the exact same
+    `compute_frame()` analysis (`_AudioAnalysisMixin`) as
+    `AudioChannelSource`, just from a different sample producer: `QAudioSource`
+    captures raw PCM into a `QIODevice`, read back here on `readyRead`
+    instead of `AudioChannelSource`'s `QAudioBufferOutput` callback.
+
+    Deliberately **not** looped/played back through a `QAudioOutput`: a
+    live mic input echoing itself out of the speakers is a feedback risk
+    (literal audio feedback if a mic is anywhere near the output device),
+    and shadertoy.com's own mic input isn't audible either -- it's a
+    silent analysis-only source, unlike the file-based channel, which is
+    deliberately audible (see `AudioChannelSource.start`'s docstring for
+    why that one *is* played back)."""
+
+    sourceLost = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._init_analysis()
+        self._source: QAudioSource | None = None
+        self._device: QIODevice | None = None
+
+    def start(self, device_id: str = "") -> bool:
+        """Starts capturing from the input device identified by
+        `device_id` (`""` = system default, same convention as
+        `VideoChannelSource.start_webcam`). Returns whether a usable input
+        device was found -- mirrors `_pick_webcam`'s own "no camera
+        available" check on the video side, since `QMediaDevices` can
+        just as easily report zero audio input devices (no mic attached,
+        permission denied at the OS level, ...)."""
+        self.stop()
+        self._ring[:] = 0.0
+        candidates = QMediaDevices.audioInputs()
+        chosen: QAudioDevice | None = None
+        if device_id:
+            chosen = next(
+                (dev for dev in candidates if bytes(dev.id()).decode("utf-8", "replace") == device_id), None
+            )
+        if chosen is None:
+            chosen = QMediaDevices.defaultAudioInput() if not candidates else candidates[0]
+        if chosen is None or chosen.isNull():
+            return False
+        fmt = chosen.preferredFormat()
+        self._source = QAudioSource(chosen, fmt, self)
+        self._source.stateChanged.connect(self._on_state_changed)
+        self._device = self._source.start()
+        if self._device is None:
+            self._source = None
+            return False
+        self._device.readyRead.connect(self._on_ready_read)
+        return True
+
+    def stop(self) -> None:
+        """Releases the capture device if currently active. Safe to call
+        unconditionally, same contract as `VideoChannelSource.stop`."""
+        if self._source is not None:
+            self._source.stop()
+            self._source.deleteLater()
+            self._source = None
+        self._device = None
+
+    def is_active(self) -> bool:
+        return self._source is not None
+
+    def position_seconds(self) -> float:
+        """A live capture has no "playback position" the way a decoded
+        file does -- `iChannelTime` stays `0.0` for it, same convention
+        the engine already applies to every non-file-based channel kind
+        (see `renderer::ChannelInput`'s `channel_time` handling). Exists
+        so `MainWindow._on_audio_tick` can call it identically on either
+        source type without a kind check."""
+        return 0.0
+
+    def _on_state_changed(self, state) -> None:
+        # `QAudio.StoppedState` after a successful start (as opposed to
+        # our own `stop()`, which tears `self._source` down directly and
+        # never reaches this handler with a still-live `self._source`)
+        # means the OS pulled the device out from under us -- a USB mic
+        # unplugged mid-use, or a permission revoked -- same "source lost"
+        # signal shape as `VideoChannelSource.sourceLost`/
+        # `AudioChannelSource.sourceLost`.
+        from PySide6.QtMultimedia import QAudio
+
+        if state == QAudio.State.StoppedState and self._source is not None:
+            error = self._source.error()
+            if error != QAudio.Error.NoError:
+                self.sourceLost.emit(str(error))
+
+    def _on_ready_read(self) -> None:
+        if self._device is None or self._source is None:
+            return
+        raw = bytes(self._device.readAll())
+        if not raw:
+            return
+        samples = _decode_samples(raw, self._source.format())
+        if samples is not None:
+            self._push_samples(samples)

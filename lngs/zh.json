@@ -59,6 +59,9 @@
     "play_pause_tooltip": "播放/暂停时间 (iTime) — 也会驱动带关键帧的滑块动画",
     "reset_time": "重置时间",
     "reset_time_tooltip": "将 iTime 重置为 0 — 便于从头重新播放关键帧序列",
+    "record_mouse": "🖱 录制鼠标轨迹",
+    "record_mouse_stop": "⏹ 停止录制",
+    "record_mouse_tooltip": "录制鼠标移动，以便在视频导出期间重放（iMouse）",
     "golf": "压缩 🏌",
     "degolf": "格式化 🧹",
     "degolf_tooltip": "重新格式化代码（缩进、每行一条语句、间距），不重命名任何内容，也不改变其行为"
@@ -87,7 +90,8 @@
     "toolbar.reset_time": "工具栏：重置时间",
     "toolbar.golf": "工具栏：压缩",
     "edit.degolf": "编辑：格式化代码",
-    "toolbar.degolf": "工具栏：格式化"
+    "toolbar.degolf": "工具栏：格式化",
+    "toolbar.record_mouse": "工具栏：录制鼠标轨迹"
   },
   "dialogs": {
     "common": {
@@ -335,7 +339,12 @@
       "title": "不支持的显卡",
       "body": "无法启动：在此计算机上未找到兼容的显卡。\n\n请尝试更新显卡驱动程序，然后重新启动本软件。\n\n技术详情：{error}"
     },
-    "viewport_resize_error": "预览未调整大小（显存不足）：{error}"
+    "viewport_resize_error": "预览未调整大小（显存不足）：{error}",
+    "microphone_error": {
+      "title": "麦克风",
+      "no_microphone": "在此计算机上未检测到麦克风。",
+      "microphone_prompt": "iChannel{index} 的麦克风："
+    }
   },
   "sliders_panel": {
     "filter_placeholder": "筛选…",
@@ -377,6 +386,7 @@
     "source_image": "图像（文件）",
     "source_video": "视频（文件）…",
     "source_audio": "音频（文件）…",
+    "source_microphone": "麦克风",
     "source_webcam": "摄像头",
     "source_cubemap": "立方体贴图（6 张图像）",
     "source_keyboard": "键盘 (iKeyboard)",
@@ -387,7 +397,10 @@
     "change_cubemap": "编辑各面…",
     "change_video": "更改视频…",
     "change_audio": "更改音频…",
+    "change_microphone": "更换麦克风…",
     "volume_tooltip": "音频输入音量（与系统音量无关）",
+    "audio_gain_label": "增益",
+    "audio_gain_tooltip": "在频谱归一化之前应用的增益偏移（dB）——请凭观察/听觉调整，shadertoy.com 的确切比例未公开",
     "mute_tooltip": "静音",
     "procedural_scale_label": "图案大小",
     "procedural_scale_tooltip": "图案大小（格数／噪点网格分辨率）",
@@ -398,9 +411,11 @@
     "choose_audio": "为 iChannel{index} 选择音频文件",
     "choose_image": "为 iChannel{index} 选择图像",
     "procedural_suffix": "{label}（程序化）",
+    "procedural_cubemap_suffix": "{label}（程序化立方体贴图）",
     "thumb_empty": "空",
     "thumb_cube": "立方体",
     "default_webcam_tooltip": "默认摄像头",
+    "default_microphone_tooltip": "默认麦克风",
     "source_lost_tooltip": "来源丢失：{message}"
   },
   "footer": {

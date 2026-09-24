@@ -127,6 +127,23 @@ def active_language_code() -> str:
     return _active_code
 
 
+def active_language_is_rtl() -> bool:
+    """Whether the currently active language (see `load_language()`) is
+    written right-to-left -- `lngs/<code>.json`'s own `_meta.rtl: true`,
+    same "the language file is the source of truth" convention already
+    used for `_meta.name` (`available_languages()`). `False` for any
+    language file that omits the key entirely (every one of the 12
+    shipped today: none of de/en/es/fr/hi/it/ja/ko/no/pt/sv/zh is RTL) --
+    a language deposited into `lngs/` for an RTL script (Arabic, Hebrew,
+    Farsi, Urdu, ...) opts in by adding `"_meta": {..., "rtl": true}`,
+    picked up automatically the same way a new `available_languages()`
+    entry already is, no code change needed here. Before the first
+    `load_language()` call (or if no language file could be read at all),
+    `_active` is empty and this returns `False`, the same safe default
+    `tr()` itself falls back to."""
+    return bool(_active.get("_meta", {}).get("rtl", False))
+
+
 def _lookup(tree: dict[str, Any], key: str) -> Any:
     """Resolves a dotted key against `tree`, walking one path segment at a
     time -- except a segment boundary is only "cut" if there isn't already
@@ -155,6 +172,37 @@ def _lookup(tree: dict[str, Any], key: str) -> Any:
     return node
 
 
+# RESTE.md: "pluralisation (ICU/gettext) — délibérément hors scope" in the
+# original i18n work. Full ICU MessageFormat (arbitrary nested plural/
+# select/gender rules) would be a large dependency for a desktop app whose
+# actual UI strings only ever count plain items (frames, octets, langues,
+# ...) — a two-category CLDR-style "one"/"other" split covers every
+# language this app ships (`lngs/*.json`) without pulling one in. None of
+# the 12 shipped languages need a third bucket (Slavic "few/many", Arabic's
+# 6-way split, ...): every Romance/Germanic language here reduces to
+# "1 -> one, else -> other", French and Hindi additionally treat 0 as "one"
+# (their own grammatical singular, not a quirk of this implementation), and
+# CJK (ja/ko/zh) has no plural distinction at all — `_plural_category`
+# below is a lookup table, not a guess, sourced from each language's own
+# well-known CLDR plural rule.
+_FRENCH_STYLE_PLURAL_LANGS = frozenset({"fr", "hi"})  # n in {0, 1} -> "one"
+_NO_PLURAL_LANGS = frozenset({"ja", "ko", "zh"})  # always "other"
+
+
+def _plural_category(lang_code: str, n: float) -> str:
+    """CLDR-style plural category for `n` in `lang_code` -- `"one"` or
+    `"other"`, the only two buckets any shipped language needs (see the
+    module-level comment above). Never raises: an unrecognized/empty
+    `lang_code` (language file missing, or a future language not yet
+    classified here) falls back to the common `n == 1` rule rather than
+    crashing a UI string over it."""
+    if lang_code in _NO_PLURAL_LANGS:
+        return "other"
+    if lang_code in _FRENCH_STYLE_PLURAL_LANGS:
+        return "one" if n in (0, 1) else "other"
+    return "one" if n == 1 else "other"
+
+
 def tr(key: str, **kwargs: Any) -> str:
     """Resolves a dotted key (e.g. `"dialogs.export_video.title"`) against
     the active language, falling back to `fr.json` if the key is missing
@@ -179,14 +227,28 @@ def tr(key: str, **kwargs: Any) -> str:
     because the caller passed a group key by mistake) is returned as-is,
     without attempting `.format()` on it.
 
+    **Pluralization**: a `count=` kwarg selects between plural forms when
+    the resolved value is a `{"one": "...", "other": "..."}` dict instead
+    of a plain string (e.g. an entry of `{"one": "{count} frame", "other":
+    "{count} frames"}` in `lngs/en.json`, resolved by passing `count=n`
+    alongside the usual key) — see `_plural_category` for the two-category
+    CLDR-style rule (every language this app ships needs no more than
+    "one"/"other"). The category is chosen using the *language the string
+    was actually resolved from* (the active language, or `fr` if this key
+    fell back to it), never a mismatched rule from a different language.
+    Without a `count=` kwarg, a dict value is returned as-is, same as any
+    other non-string value — a plural key always requires `count`.
+
     `load_language()` must be called once at startup before this is used
     for real; before that (or if no language file could be read at all)
     every lookup misses, which raises/degrades exactly like a genuinely
     missing key (see above) since there's no way to tell the two apart.
     """
     value = _lookup(_active, key)
+    resolved_lang = _active_code
     if value is None:
         value = _lookup(_fallback, key)
+        resolved_lang = FALLBACK_LANGUAGE_CODE
     if value is None:
         if not getattr(sys, "frozen", False):
             raise MissingTranslationKeyError(
@@ -197,6 +259,9 @@ def tr(key: str, **kwargs: Any) -> str:
                 f"letting it silently show up as a raw key on screen."
             )
         return key
+    if isinstance(value, dict) and "count" in kwargs and "other" in value:
+        category = _plural_category(resolved_lang, kwargs["count"])
+        value = value.get(category, value["other"])
     if isinstance(value, str) and kwargs:
         try:
             return value.format(**kwargs)

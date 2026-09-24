@@ -59,6 +59,9 @@
     "play_pause_tooltip": "Spill av/pause tiden (iTime) — animerer også glidebrytere med nøkkelbilder",
     "reset_time": "Tilbakestill tiden",
     "reset_time_tooltip": "Tilbakestiller iTime til 0 — nyttig for å spille av en nøkkelbildesekvens fra begynnelsen igjen",
+    "record_mouse": "🖱 Ta opp musebane",
+    "record_mouse_stop": "⏹ Stopp opptak",
+    "record_mouse_tooltip": "Tar opp musbevegelse for avspilling under videoeksport (iMouse)",
     "golf": "Golf 🏌",
     "degolf": "Avgolf 🧹",
     "degolf_tooltip": "Formaterer koden på nytt (innrykk, én setning per linje, mellomrom) uten å endre navn på noe eller endre virkemåten"
@@ -87,7 +90,8 @@
     "toolbar.reset_time": "Verktøylinje: Tilbakestill tiden",
     "toolbar.golf": "Verktøylinje: Golf",
     "edit.degolf": "Rediger: Avgolf koden",
-    "toolbar.degolf": "Verktøylinje: Avgolf"
+    "toolbar.degolf": "Verktøylinje: Avgolf",
+    "toolbar.record_mouse": "Verktøylinje: Ta opp musebane"
   },
   "dialogs": {
     "common": {
@@ -335,7 +339,12 @@
       "title": "Grafikkortet støttes ikke",
       "body": "Kunne ikke starte: fant ikke noe kompatibelt grafikkort på denne datamaskinen.\n\nPrøv å oppdatere driverne for grafikkortet, og start deretter programmet på nytt.\n\nTeknisk detalj: {error}"
     },
-    "viewport_resize_error": "Forhåndsvisningen ble ikke endret i størrelse (utilstrekkelig grafikkminne): {error}"
+    "viewport_resize_error": "Forhåndsvisningen ble ikke endret i størrelse (utilstrekkelig grafikkminne): {error}",
+    "microphone_error": {
+      "title": "Mikrofon",
+      "no_microphone": "Ingen mikrofon oppdaget på denne maskinen.",
+      "microphone_prompt": "Mikrofon for iChannel{index}:"
+    }
   },
   "sliders_panel": {
     "filter_placeholder": "Filtrer…",
@@ -377,6 +386,7 @@
     "source_image": "Bilde (fil)",
     "source_video": "Video (fil)…",
     "source_audio": "Lyd (fil)…",
+    "source_microphone": "Mikrofon",
     "source_webcam": "Webkamera",
     "source_cubemap": "Cubemap (6 bilder)",
     "source_keyboard": "Tastatur (iKeyboard)",
@@ -387,7 +397,10 @@
     "change_cubemap": "Rediger sider…",
     "change_video": "Bytt video…",
     "change_audio": "Bytt lyd…",
+    "change_microphone": "Bytt mikrofon…",
     "volume_tooltip": "Volum for lydinngangen (uavhengig av systemvolumet)",
+    "audio_gain_label": "Forsterkning",
+    "audio_gain_tooltip": "Forsterkningsforskyvning (dB) brukt før spektrumnormalisering — juster etter øye/øre, den eksakte skalaen til shadertoy.com er ikke publisert",
     "mute_tooltip": "Demp",
     "procedural_scale_label": "Mønsterstørrelse",
     "procedural_scale_tooltip": "Mønsterstørrelse (antall celler / oppløsning på støyrutenettet)",
@@ -398,9 +411,11 @@
     "choose_audio": "Velg en lydfil for iChannel{index}",
     "choose_image": "Velg et bilde for iChannel{index}",
     "procedural_suffix": "{label} (prosedural)",
+    "procedural_cubemap_suffix": "{label} (prosedyrisk cubemap)",
     "thumb_empty": "tom",
     "thumb_cube": "KUBE",
     "default_webcam_tooltip": "standard webkamera",
+    "default_microphone_tooltip": "standardmikrofon",
     "source_lost_tooltip": "Kilden gikk tapt: {message}"
   },
   "footer": {

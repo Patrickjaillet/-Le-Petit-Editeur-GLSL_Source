@@ -52,9 +52,9 @@ print("exported layout:", layout)
 # as deliberate the moment it stops matching the freshly-recomputed auto
 # value for its current range.
 assert layout == [
-    {"category": "Global", "kind": "float", "index": 0, "min": 0.0, "max": 2.0, "decimals": 4},
-    {"category": "Global", "kind": "float", "index": 1, "min": -50.0, "max": 50.0, "decimals": 2, "step": 0.004},
-    {"category": "Global", "kind": "int", "index": 0, "min": 0, "max": 6},
+    {"category": "Global", "kind": "float", "index": 0, "min": 0.0, "max": 2.0, "initial_value": 1.0, "decimals": 4},
+    {"category": "Global", "kind": "float", "index": 1, "min": -50.0, "max": 50.0, "initial_value": 2.0, "decimals": 2, "step": 0.004},
+    {"category": "Global", "kind": "int", "index": 0, "min": 0, "max": 6, "initial_value": 3},
 ], "unexpected layout export"
 
 # Simulate a structural rebuild (source changed but same literal
@@ -109,7 +109,7 @@ assert abs(auto_step - 2.0 / 1000) < 1e-9, "a freshly built slider should start 
 # step field is non-zero) must be picked up by export_layout...
 step_spin.setSingleStep(0.25)
 layout2 = panel2.export_layout()
-assert layout2 == [{"category": "Global", "kind": "float", "index": 0, "min": 0.0, "max": 2.0, "decimals": 4, "step": 0.25}]
+assert layout2 == [{"category": "Global", "kind": "float", "index": 0, "min": 0.0, "max": 2.0, "initial_value": 1.0, "decimals": 4, "step": 0.25}]
 print("explicit step override exported: ok")
 
 # ...and restored verbatim across a structural rebuild, exactly like
@@ -130,6 +130,53 @@ panel2.apply_layout(layout_no_step)
 _, step_spin3 = panel2._rows[0]
 assert abs(step_spin3.singleStep() - 4.0 / 1000) < 1e-9, "missing 'step' key must fall back to the auto step for the new range"
 print("missing 'step' key in old layouts falls back to auto: ok")
+
+# ---- overrides survive a genuine structural rebuild (RESTE.md) ---------
+
+# Two float sliders, "b" holding a distinctive override (min/max/decimals)
+# captured by index=1.
+panel3 = SlidersPanel()
+src5 = "float a = 1.0; float b = 100.0;"
+sliders5 = Sliders(
+    floats=[FakeFloat(10, 13, 1.0, 0.0, 2.0, "Global"), FakeFloat(25, 29, 100.0, 0.0, 200.0, "Global")],
+    ints=[],
+)
+panel3.rebuild(src5, sliders5)
+_, spin_b = panel3._rows[1]
+spin_b.setMinimum(50.0)
+spin_b.setMaximum(150.0)
+spin_b.setDecimals(1)
+layout3 = panel3.export_layout()
+assert layout3[1]["initial_value"] == 100.0
+
+# Structural rebuild: a brand new float ("z") is now declared *before* "b"
+# in source order, so "b" shifts from index=1 to index=2 within its
+# (category, kind) group -- an exact (category, kind, index) match no
+# longer finds it. Its value (100.0) is unchanged, so the fallback should
+# still recognize it by proximity to the recorded initial_value, rather
+# than either silently dropping the override or wrongly handing it to "a"
+# (whose own value, 1.0, is nowhere near 100.0).
+src6 = "float z = 5.0; float a = 1.0; float b = 100.0;"
+sliders6 = Sliders(
+    floats=[
+        FakeFloat(10, 13, 5.0, 0.0, 10.0, "Global"),
+        FakeFloat(25, 28, 1.0, 0.0, 2.0, "Global"),
+        FakeFloat(40, 45, 100.0, 0.0, 200.0, "Global"),
+    ],
+    ints=[],
+)
+panel3.rebuild(src6, sliders6)
+panel3.apply_layout(layout3)
+_, spin_z = panel3._rows[0]
+_, spin_a = panel3._rows[1]
+_, spin_b2 = panel3._rows[2]
+assert (spin_b2.minimum(), spin_b2.maximum(), spin_b2.decimals()) == (50.0, 150.0, 1), (
+    "override should have followed 'b' to its new index via value-proximity fallback, "
+    f"got min={spin_b2.minimum()} max={spin_b2.maximum()} decimals={spin_b2.decimals()}"
+)
+assert (spin_a.minimum(), spin_a.maximum()) == (0.0, 2.0), "'a' must not have picked up 'b's override"
+assert (spin_z.minimum(), spin_z.maximum()) == (0.0, 10.0), "the newly-inserted 'z' must not match anything"
+print("override survives a structural rebuild via value-proximity fallback: ok")
 
 # ---- keyframing --------------------------------------------------------
 

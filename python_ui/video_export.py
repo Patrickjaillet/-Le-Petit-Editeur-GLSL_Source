@@ -19,6 +19,7 @@ Image pass alone.
 """
 from __future__ import annotations
 
+import bisect
 import queue
 import shutil
 import subprocess
@@ -26,17 +27,48 @@ import sys
 import tempfile
 import threading
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence, Union
 
 from PySide6.QtGui import QImage
 
 # Shadertoy convention: `iMouse` is (last/held xy, click xy — negative once
-# released). No mouse trajectory is recorded for an export (yet), so it's
-# held fixed for every frame; a shader that leans heavily on mouse
-# interaction will export with a frozen position. This is a known,
-# documented limitation (surfaced in the export dialog once it exists),
-# not an oversight.
+# released). By default no mouse trajectory is recorded for an export, so
+# it's held fixed for every frame; a shader that leans heavily on mouse
+# interaction exports with a frozen position unless the caller records and
+# passes a `MouseTrajectory` instead (see `capture_frames`'s `mouse`
+# parameter and `ui.viewport.Viewport.start_mouse_recording`).
 FIXED_MOUSE: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+
+# A recorded mouse trajectory: `(time_seconds, x, y, z, w)` samples, sorted
+# by `time_seconds` ascending -- `z`/`w` already carry Shadertoy's own
+# click-position/held-sign convention exactly as `Viewport._mouse` does, so
+# a sample can be handed to `Engine.render` as `(x, y, z, w)` unmodified
+# once resolved for a given time.
+MouseTrajectory = Sequence[tuple[float, float, float, float, float]]
+
+
+def _mouse_at_time(trajectory: MouseTrajectory, time: float) -> tuple[float, float, float, float]:
+    """Resolves a recorded trajectory to the `(x, y, z, w)` iMouse value
+    that was actually live at `time`: the most recent sample at or before
+    `time` is held constant until the next one (never interpolated) --
+    the same "hold, don't blend" convention `Viewport` itself already uses
+    between real mouse events (a `mouseMoveEvent` sets a new value and it
+    then stays there until the next event), so resampling at the export's
+    own frame times reproduces what was actually on screen rather than
+    inventing in-between positions the user never held.
+
+    Before the first recorded sample (an export frame earlier than
+    recording started, or an empty trajectory), falls back to
+    `FIXED_MOUSE` -- there is nothing truthful to hold yet.
+    """
+    if not trajectory:
+        return FIXED_MOUSE
+    times = [sample[0] for sample in trajectory]
+    idx = bisect.bisect_right(times, time) - 1
+    if idx < 0:
+        return FIXED_MOUSE
+    _t, x, y, z, w = trajectory[idx]
+    return (x, y, z, w)
 
 FRAME_FILENAME_TEMPLATE = "frame_%06d.png"
 
@@ -57,7 +89,7 @@ def capture_frames(
     width: int,
     height: int,
     date: tuple[float, float, float, float],
-    mouse: tuple[float, float, float, float] = FIXED_MOUSE,
+    mouse: Union[tuple[float, float, float, float], MouseTrajectory] = FIXED_MOUSE,
     out_dir: str | Path | None = None,
     on_frame_rendered: Callable[[int, int], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
@@ -136,6 +168,13 @@ def capture_frames(
     dest.mkdir(parents=True, exist_ok=True)
     time_delta = 1.0 / fps
 
+    # A fixed `(x, y, z, w)` 4-tuple (the default, and every existing
+    # caller before mouse-trajectory recording existed) is used as-is for
+    # every frame; anything else is treated as a `MouseTrajectory` and
+    # resolved per-frame via `_mouse_at_time` -- so this stays fully
+    # backward compatible with every pre-existing call site.
+    is_trajectory = not (isinstance(mouse, tuple) and len(mouse) == 4)
+
     for i in range(n_frames + 1):
         # Checked *before* rendering the next frame, not after saving the
         # previous one: a shader that's expensive per-frame (heavy
@@ -145,7 +184,8 @@ def capture_frames(
         if should_cancel is not None and should_cancel():
             raise ExportCancelled()
         time = i / fps
-        pixels = engine.render(time, time_delta, mouse, i, date)
+        frame_mouse = _mouse_at_time(mouse, time) if is_trajectory else mouse
+        pixels = engine.render(time, time_delta, frame_mouse, i, date)
         if i == 0:
             # Discarded to absorb the one-frame readback offset (see
             # docstring above): this return value is a duplicate of
@@ -432,7 +472,7 @@ def run_export(
     crf: int,
     date: tuple[float, float, float, float],
     out_path: str | Path,
-    mouse: tuple[float, float, float, float] = FIXED_MOUSE,
+    mouse: Union[tuple[float, float, float, float], MouseTrajectory] = FIXED_MOUSE,
     ffmpeg_path: str | Path | None = None,
     audio_path: str | Path | None = None,
     audio_volume_db: float = 0.0,
