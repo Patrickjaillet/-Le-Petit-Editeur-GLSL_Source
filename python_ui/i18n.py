@@ -127,6 +127,23 @@ def active_language_code() -> str:
     return _active_code
 
 
+def active_language_is_rtl() -> bool:
+    """Whether the currently active language (see `load_language()`) is
+    written right-to-left -- `lngs/<code>.json`'s own `_meta.rtl: true`,
+    same "the language file is the source of truth" convention already
+    used for `_meta.name` (`available_languages()`). `False` for any
+    language file that omits the key entirely (every one of the 12
+    shipped today: none of de/en/es/fr/hi/it/ja/ko/no/pt/sv/zh is RTL) --
+    a language deposited into `lngs/` for an RTL script (Arabic, Hebrew,
+    Farsi, Urdu, ...) opts in by adding `"_meta": {..., "rtl": true}`,
+    picked up automatically the same way a new `available_languages()`
+    entry already is, no code change needed here. Before the first
+    `load_language()` call (or if no language file could be read at all),
+    `_active` is empty and this returns `False`, the same safe default
+    `tr()` itself falls back to."""
+    return bool(_active.get("_meta", {}).get("rtl", False))
+
+
 def _lookup(tree: dict[str, Any], key: str) -> Any:
     """Resolves a dotted key against `tree`, walking one path segment at a
     time -- except a segment boundary is only "cut" if there isn't already
