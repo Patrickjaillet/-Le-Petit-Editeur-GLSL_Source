@@ -59,6 +59,9 @@
     "play_pause_tooltip": "Play/pause time (iTime) — also animates sliders that have keyframes",
     "reset_time": "Reset time",
     "reset_time_tooltip": "Resets iTime to 0 — useful to replay a keyframe sequence from the start",
+    "record_mouse": "🖱 Record mouse path",
+    "record_mouse_stop": "⏹ Stop recording",
+    "record_mouse_tooltip": "Records mouse movement to replay it during video export (iMouse)",
     "golf": "Golf 🏌",
     "degolf": "Un-golf 🧹",
     "degolf_tooltip": "Reformats the code (indentation, one statement per line, spacing) without renaming anything or changing its behavior"
@@ -87,7 +90,8 @@
     "toolbar.play_pause": "Toolbar: Play/Pause",
     "toolbar.reset_time": "Toolbar: Reset time",
     "toolbar.golf": "Toolbar: Golf",
-    "toolbar.degolf": "Toolbar: Un-golf"
+    "toolbar.degolf": "Toolbar: Un-golf",
+    "toolbar.record_mouse": "Toolbar: Record mouse path"
   },
   "dialogs": {
     "common": {

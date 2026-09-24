@@ -59,6 +59,9 @@
     "play_pause_tooltip": "Lecture/Pause du temps (iTime) — anime aussi les sliders qui ont des keyframes",
     "reset_time": "Reinitialiser le temps",
     "reset_time_tooltip": "Remet iTime à 0 — utile pour rejouer une séquence de keyframes depuis le début",
+    "record_mouse": "🖱 Enregistrer le trajet",
+    "record_mouse_stop": "⏹ Arrêter l'enregistrement",
+    "record_mouse_tooltip": "Enregistre les mouvements de la souris pour les rejouer pendant l'export vidéo (iMouse)",
     "golf": "Golf 🏌",
     "degolf": "Dé-golf 🧹",
     "degolf_tooltip": "Reformate le code (indentation, une instruction par ligne, espacement) sans rien renommer ni changer son comportement"
@@ -87,7 +90,8 @@
     "toolbar.play_pause": "Barre d'outils : Lecture/Pause",
     "toolbar.reset_time": "Barre d'outils : Réinitialiser le temps",
     "toolbar.golf": "Barre d'outils : Golf",
-    "toolbar.degolf": "Barre d'outils : Dé-golf"
+    "toolbar.degolf": "Barre d'outils : Dé-golf",
+    "toolbar.record_mouse": "Barre d'outils : Enregistrer le trajet de la souris"
   },
   "dialogs": {
     "common": {

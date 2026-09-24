@@ -59,6 +59,9 @@
     "play_pause_tooltip": "時間 (iTime) を再生/一時停止 — キーフレームを持つスライダーもアニメーションします",
     "reset_time": "時間をリセット",
     "reset_time_tooltip": "iTime を 0 にリセットします — キーフレームシーケンスを最初から再生し直すのに便利です",
+    "record_mouse": "🖱 マウス軌跡を記録",
+    "record_mouse_stop": "⏹ 記録を停止",
+    "record_mouse_tooltip": "動画書き出し中に再生するためマウスの動きを記録します (iMouse)",
     "golf": "ゴルフ 🏌",
     "degolf": "整形 🧹",
     "degolf_tooltip": "コードを再フォーマットします(インデント、1行1文、スペース)。名前の変更や動作の変更は行いません"
@@ -87,7 +90,8 @@
     "toolbar.reset_time": "ツールバー: 時間をリセット",
     "toolbar.golf": "ツールバー: ゴルフ",
     "edit.degolf": "編集: コードを整形",
-    "toolbar.degolf": "ツールバー: 整形"
+    "toolbar.degolf": "ツールバー: 整形",
+    "toolbar.record_mouse": "ツールバー: マウス軌跡を記録"
   },
   "dialogs": {
     "common": {

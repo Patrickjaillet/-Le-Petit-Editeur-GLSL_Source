@@ -346,6 +346,18 @@ class MainWindow(QMainWindow):
         reset_time_action.triggered.connect(lambda: self.viewport.reset_time())
         toolbar.addAction(reset_time_action)
 
+        # RESTE.md: "pas d'enregistrement du trajet de la souris pendant
+        # l'export" -- toggled on/off like play/pause, drives
+        # `Viewport.start_mouse_recording`/`stop_mouse_recording` directly
+        # rather than going through a dedicated "record mode" concept:
+        # the recorded trajectory (if any) is picked up automatically by
+        # `_on_export_video` the next time an export runs.
+        self._record_mouse_action = reg("toolbar.record_mouse", QAction(tr("toolbar.record_mouse"), self))
+        self._record_mouse_action.setCheckable(True)
+        self._record_mouse_action.setToolTip(tr("toolbar.record_mouse_tooltip"))
+        self._record_mouse_action.toggled.connect(self._on_record_mouse_toggled)
+        toolbar.addAction(self._record_mouse_action)
+
         toolbar.addSeparator()
 
         golf_action = reg("toolbar.golf", QAction(tr("toolbar.golf"), self))
@@ -692,6 +704,14 @@ class MainWindow(QMainWindow):
     def _on_play_toggled(self, paused: bool) -> None:
         self.viewport.set_paused(paused)
         self._play_action.setText(tr("toolbar.play") if paused else tr("toolbar.pause"))
+
+    def _on_record_mouse_toggled(self, recording: bool) -> None:
+        if recording:
+            self.viewport.start_mouse_recording()
+            self._record_mouse_action.setText(tr("toolbar.record_mouse_stop"))
+        else:
+            self.viewport.stop_mouse_recording()
+            self._record_mouse_action.setText(tr("toolbar.record_mouse"))
 
     @staticmethod
     def _add_transform_row(
@@ -1682,6 +1702,15 @@ class MainWindow(QMainWindow):
         # frame — or a queued debounced resize — in between resizing the
         # shared `Engine` to the export resolution and resizing it back,
         # or it would read pixels sized for the wrong resolution.
+        # A recording still in progress when Export is triggered is
+        # stopped first, same as any other "finalize before use" pattern
+        # in this codebase -- exporting mid-recording would otherwise
+        # silently use whatever partial trajectory happened to exist yet.
+        if self._record_mouse_action.isChecked():
+            self._record_mouse_action.setChecked(False)
+        trajectory = self.viewport.mouse_trajectory()
+        export_mouse = trajectory if trajectory else video_export.FIXED_MOUSE
+
         self.viewport.suspend_for_external_render()
         try:
             # RM10.md section 1, item 8: `resize` can still fail here even
@@ -1707,6 +1736,7 @@ class MainWindow(QMainWindow):
                     export.crf,
                     self.viewport.current_date(),
                     path,
+                    mouse=export_mouse,
                     audio_path=export.audio_path,
                     audio_volume_db=export.audio_volume_db,
                     audio_start_offset=export.audio_start_offset,

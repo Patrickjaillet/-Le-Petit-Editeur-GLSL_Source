@@ -59,6 +59,9 @@
     "play_pause_tooltip": "播放/暂停时间 (iTime) — 也会驱动带关键帧的滑块动画",
     "reset_time": "重置时间",
     "reset_time_tooltip": "将 iTime 重置为 0 — 便于从头重新播放关键帧序列",
+    "record_mouse": "🖱 录制鼠标轨迹",
+    "record_mouse_stop": "⏹ 停止录制",
+    "record_mouse_tooltip": "录制鼠标移动，以便在视频导出期间重放（iMouse）",
     "golf": "压缩 🏌",
     "degolf": "格式化 🧹",
     "degolf_tooltip": "重新格式化代码（缩进、每行一条语句、间距），不重命名任何内容，也不改变其行为"
@@ -87,7 +90,8 @@
     "toolbar.reset_time": "工具栏：重置时间",
     "toolbar.golf": "工具栏：压缩",
     "edit.degolf": "编辑：格式化代码",
-    "toolbar.degolf": "工具栏：格式化"
+    "toolbar.degolf": "工具栏：格式化",
+    "toolbar.record_mouse": "工具栏：录制鼠标轨迹"
   },
   "dialogs": {
     "common": {

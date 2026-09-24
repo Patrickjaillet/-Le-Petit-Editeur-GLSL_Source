@@ -59,6 +59,9 @@
     "play_pause_tooltip": "Spill av/pause tiden (iTime) — animerer også glidebrytere med nøkkelbilder",
     "reset_time": "Tilbakestill tiden",
     "reset_time_tooltip": "Tilbakestiller iTime til 0 — nyttig for å spille av en nøkkelbildesekvens fra begynnelsen igjen",
+    "record_mouse": "🖱 Ta opp musebane",
+    "record_mouse_stop": "⏹ Stopp opptak",
+    "record_mouse_tooltip": "Tar opp musbevegelse for avspilling under videoeksport (iMouse)",
     "golf": "Golf 🏌",
     "degolf": "Avgolf 🧹",
     "degolf_tooltip": "Formaterer koden på nytt (innrykk, én setning per linje, mellomrom) uten å endre navn på noe eller endre virkemåten"
@@ -87,7 +90,8 @@
     "toolbar.reset_time": "Verktøylinje: Tilbakestill tiden",
     "toolbar.golf": "Verktøylinje: Golf",
     "edit.degolf": "Rediger: Avgolf koden",
-    "toolbar.degolf": "Verktøylinje: Avgolf"
+    "toolbar.degolf": "Verktøylinje: Avgolf",
+    "toolbar.record_mouse": "Verktøylinje: Ta opp musebane"
   },
   "dialogs": {
     "common": {

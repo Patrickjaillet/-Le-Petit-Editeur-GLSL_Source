@@ -68,6 +68,7 @@ SHORTCUT_SPECS: list[ShortcutSpec] = [
     ShortcutSpec("toolbar.compile", "actions.toolbar.compile", "F5"),
     ShortcutSpec("toolbar.play_pause", "actions.toolbar.play_pause", "Space"),
     ShortcutSpec("toolbar.reset_time", "actions.toolbar.reset_time", ""),
+    ShortcutSpec("toolbar.record_mouse", "actions.toolbar.record_mouse", ""),
     ShortcutSpec("toolbar.golf", "actions.toolbar.golf", ""),
 ]
 

@@ -76,6 +76,18 @@ class Viewport(QWidget):
         self._mouse = (0.0, 0.0, 0.0, 0.0)
         self._click_pos = (0.0, 0.0)
 
+        # Mouse-trajectory recording for video export (RESTE.md: "pas
+        # d'enregistrement du trajet de la souris pendant l'export" --
+        # `iMouse` used to be frozen at `(0,0,0,0)` for the whole export
+        # otherwise). `(time_seconds, x, y, z, w)` samples, appended once
+        # per tick while `self._mouse_recording` is true -- not just on
+        # mouse *events* -- so a held-still cursor between events is
+        # still represented at every recorded time, exactly matching what
+        # `video_export._mouse_at_time`'s "hold the most recent sample"
+        # resampling later expects to find.
+        self._mouse_recording = False
+        self._mouse_trajectory: list[tuple[float, float, float, float, float]] = []
+
         # `iKeyboard` state (Shadertoy layout: down / pressed-this-frame /
         # toggled, one byte per JS-style legacy keyCode, see `ui.keymap`
         # and `ChannelTexture::write_keyboard_state` on the Rust side).
@@ -139,6 +151,39 @@ class Viewport(QWidget):
         before calling this -- otherwise the very next tick renders at a
         stale resolution."""
         self._timer.start(16)
+
+    def start_mouse_recording(self) -> None:
+        """Clears any previous recording and starts appending one
+        `(time, x, y, z, w)` sample per tick to `self._mouse_trajectory`
+        until `stop_mouse_recording()`."""
+        self._mouse_trajectory = []
+        self._mouse_recording = True
+
+    def stop_mouse_recording(self) -> list[tuple[float, float, float, float, float]]:
+        """Stops recording and returns the trajectory captured so far
+        (also still available via `mouse_trajectory()` afterwards, this
+        is just a convenience for the common "stop and grab it" call
+        site)."""
+        self._mouse_recording = False
+        return self._mouse_trajectory
+
+    def is_recording_mouse(self) -> bool:
+        return self._mouse_recording
+
+    def mouse_trajectory(self) -> list[tuple[float, float, float, float, float]]:
+        """The trajectory recorded by the most recent start/stop cycle
+        (or the one still in progress) -- empty if nothing has ever been
+        recorded this session. Handed as-is to `video_export.capture_frames`'s
+        `mouse` parameter, which accepts this exact `(time, x, y, z, w)`
+        tuple shape as a `MouseTrajectory`."""
+        return self._mouse_trajectory
+
+    def clear_mouse_trajectory(self) -> None:
+        """Discards any recorded trajectory without starting a new
+        recording -- lets the user go back to the default frozen-mouse
+        export after having recorded one, without recording an empty
+        pass over it."""
+        self._mouse_trajectory = []
 
     def reset_time(self) -> None:
         self._elapsed.restart()
@@ -246,6 +291,9 @@ class Viewport(QWidget):
         if not self._paused:
             self._last_time_s = now_s
         self.timeUpdated.emit(self._last_time_s)
+
+        if self._mouse_recording:
+            self._mouse_trajectory.append((self._last_time_s, *self._mouse))
 
         self._engine.update_keyboard(bytes(self._key_down), bytes(self._key_pressed), bytes(self._key_toggled))
         # "Pressed this frame" is a one-frame pulse: clear it right after

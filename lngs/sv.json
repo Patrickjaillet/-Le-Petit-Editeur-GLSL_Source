@@ -59,6 +59,9 @@
     "play_pause_tooltip": "Spela upp/pausa tiden (iTime) — animerar även reglage med nyckelbilder",
     "reset_time": "Återställ tiden",
     "reset_time_tooltip": "Återställer iTime till 0 — praktiskt för att spela upp en nyckelbildssekvens från början igen",
+    "record_mouse": "🖱 Spela in musbana",
+    "record_mouse_stop": "⏹ Stoppa inspelning",
+    "record_mouse_tooltip": "Spelar in musrörelser för uppspelning under videoexport (iMouse)",
     "golf": "Golf 🏌",
     "degolf": "Avgolfa 🧹",
     "degolf_tooltip": "Formaterar om koden (indrag, en sats per rad, mellanslag) utan att byta namn på något eller ändra dess beteende"
@@ -87,7 +90,8 @@
     "toolbar.reset_time": "Verktygsfält: Återställ tiden",
     "toolbar.golf": "Verktygsfält: Golf",
     "edit.degolf": "Redigera: Avgolfa koden",
-    "toolbar.degolf": "Verktygsfält: Avgolfa"
+    "toolbar.degolf": "Verktygsfält: Avgolfa",
+    "toolbar.record_mouse": "Verktygsfält: Spela in musbana"
   },
   "dialogs": {
     "common": {

@@ -59,6 +59,9 @@
     "play_pause_tooltip": "Riproduci/pausa il tempo (iTime) — anima anche gli slider con fotogrammi chiave",
     "reset_time": "Reimposta il tempo",
     "reset_time_tooltip": "Reimposta iTime a 0 — utile per riprodurre una sequenza di fotogrammi chiave dall'inizio",
+    "record_mouse": "🖱 Registra percorso mouse",
+    "record_mouse_stop": "⏹ Ferma registrazione",
+    "record_mouse_tooltip": "Registra il movimento del mouse per riprodurlo durante l'esportazione video (iMouse)",
     "golf": "Golf 🏌",
     "degolf": "Sgolfa 🧹",
     "degolf_tooltip": "Riformatta il codice (indentazione, un'istruzione per riga, spaziatura) senza rinominare nulla né cambiarne il comportamento"
@@ -87,7 +90,8 @@
     "toolbar.reset_time": "Barra degli strumenti: Reimposta il tempo",
     "toolbar.golf": "Barra degli strumenti: Golf",
     "edit.degolf": "Modifica: Sgolfa il codice",
-    "toolbar.degolf": "Barra degli strumenti: Sgolfa"
+    "toolbar.degolf": "Barra degli strumenti: Sgolfa",
+    "toolbar.record_mouse": "Barra degli strumenti: Registra percorso mouse"
   },
   "dialogs": {
     "common": {

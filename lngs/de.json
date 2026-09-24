@@ -59,6 +59,9 @@
     "play_pause_tooltip": "Zeit (iTime) starten/pausieren — animiert auch Regler mit Keyframes",
     "reset_time": "Zeit zurücksetzen",
     "reset_time_tooltip": "Setzt iTime auf 0 zurück — nützlich, um eine Keyframe-Sequenz von vorn abzuspielen",
+    "record_mouse": "🖱 Mausweg aufzeichnen",
+    "record_mouse_stop": "⏹ Aufnahme stoppen",
+    "record_mouse_tooltip": "Zeichnet Mausbewegungen auf, um sie beim Videoexport abzuspielen (iMouse)",
     "golf": "Golf 🏌",
     "degolf": "Entgolfen 🧹",
     "degolf_tooltip": "Formatiert den Code neu (Einrückung, eine Anweisung pro Zeile, Leerzeichen) ohne etwas umzubenennen oder das Verhalten zu ändern"
@@ -87,7 +90,8 @@
     "toolbar.reset_time": "Symbolleiste: Zeit zurücksetzen",
     "toolbar.golf": "Symbolleiste: Golf",
     "edit.degolf": "Bearbeiten: Code entgolfen",
-    "toolbar.degolf": "Symbolleiste: Entgolfen"
+    "toolbar.degolf": "Symbolleiste: Entgolfen",
+    "toolbar.record_mouse": "Werkzeugleiste: Mausweg aufzeichnen"
   },
   "dialogs": {
     "common": {
