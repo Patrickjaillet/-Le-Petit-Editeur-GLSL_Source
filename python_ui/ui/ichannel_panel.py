@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 import workspace_dirs
-from audio_source import AUDIO_EXTENSIONS
+from audio_source import AUDIO_EXTENSIONS, list_microphones
 from i18n import tr
 from video_source import VIDEO_EXTENSIONS, list_cameras
 
@@ -106,6 +106,7 @@ def _source_labels() -> list[str]:
             tr("ichannel_panel.source_image"),
             tr("ichannel_panel.source_video"),
             tr("ichannel_panel.source_audio"),
+            tr("ichannel_panel.source_microphone"),
             tr("ichannel_panel.source_webcam"),
             tr("ichannel_panel.source_cubemap"),
             tr("ichannel_panel.source_keyboard"),
@@ -123,10 +124,14 @@ _VIDEO_INDEX = 2
 # Between "Vidéo (fichier)…" and "Webcam", matching the roadmap plan for
 # this feature.
 _AUDIO_INDEX = 3
-_WEBCAM_INDEX = 4
-_CUBEMAP_INDEX = 5
-_KEYBOARD_INDEX = 6
-_PROCEDURAL_OFFSET = 7
+# Between "Audio (fichier)…" and "Webcam": groups the two live-analysis
+# audio sources (file playback, live mic capture) together, mirroring how
+# "Vidéo (fichier)…"/"Webcam" already sit next to each other.
+_MICROPHONE_INDEX = 4
+_WEBCAM_INDEX = 5
+_CUBEMAP_INDEX = 6
+_KEYBOARD_INDEX = 7
+_PROCEDURAL_OFFSET = 8
 _PROCEDURAL_CUBEMAP_OFFSET = _PROCEDURAL_OFFSET + len(_PROCEDURAL_PRESETS)
 _BUFFER_OFFSET = _PROCEDURAL_CUBEMAP_OFFSET + len(_PROCEDURAL_CUBEMAP_PRESETS)
 
@@ -138,6 +143,8 @@ def _combo_index_for(kind: str, value) -> int:
         return _VIDEO_INDEX
     if kind == "audio":
         return _AUDIO_INDEX
+    if kind == "microphone":
+        return _MICROPHONE_INDEX
     if kind == "webcam":
         return _WEBCAM_INDEX
     if kind == "cubemap":
@@ -168,6 +175,8 @@ def _kind_value_for(combo_index: int):
         return "video", None
     if combo_index == _AUDIO_INDEX:
         return "audio", None
+    if combo_index == _MICROPHONE_INDEX:
+        return "microphone", None
     if combo_index == _WEBCAM_INDEX:
         return "webcam", None
     if combo_index == _CUBEMAP_INDEX:
@@ -500,6 +509,12 @@ class _ChannelSlot(QWidget):
             self._thumb.setPixmap(QPixmap())
             self._thumb.setText("🎵")
             self._thumb.setToolTip(value or "")
+        elif kind == "microphone":
+            self._thumb.setStyleSheet(_THUMB_STYLE_WEBCAM)
+            self._thumb.setPixmap(QPixmap())
+            self._thumb.setText("🎙")
+            label = next((desc for mic_id, desc in list_microphones() if mic_id == value), None)
+            self._thumb.setToolTip(label or tr("ichannel_panel.default_microphone_tooltip"))
         elif kind == "webcam":
             self._thumb.setStyleSheet(_THUMB_STYLE_WEBCAM)
             self._thumb.setPixmap(QPixmap())
@@ -528,6 +543,7 @@ class _ChannelSlot(QWidget):
             "cubemap": tr("ichannel_panel.change_cubemap"),
             "video": tr("ichannel_panel.change_video"),
             "audio": tr("ichannel_panel.change_audio"),
+            "microphone": tr("ichannel_panel.change_microphone"),
             "webcam": tr("ichannel_panel.change_webcam"),
         }.get(kind, tr("ichannel_panel.browse")))
         self._volume_row_widget.setVisible(kind == "audio")
@@ -662,6 +678,30 @@ class _ChannelSlot(QWidget):
         self._apply_audio(path)
         return True
 
+    def _pick_microphone(self) -> bool:
+        """Mirrors `_pick_webcam` exactly: same "0 devices -> warn and
+        bail", "1 device -> use it silently", "2+ devices -> prompt" shape,
+        just for `list_microphones()`/`dialogs.microphone_error.*` instead
+        of the camera equivalents."""
+        microphones = list_microphones()
+        if not microphones:
+            QMessageBox.warning(self, tr("dialogs.microphone_error.title"), tr("dialogs.microphone_error.no_microphone"))
+            return False
+        if len(microphones) == 1:
+            device_id = microphones[0][0]
+        else:
+            labels = [desc for _mic_id, desc in microphones]
+            label, ok = QInputDialog.getItem(
+                self, tr("dialogs.microphone_error.title"),
+                tr("dialogs.microphone_error.microphone_prompt", index=self.index), labels, 0, False,
+            )
+            if not ok:
+                return False
+            device_id = next(mid for mid, desc in microphones if desc == label)
+        self.set_state("microphone", device_id)
+        self.assignmentChanged.emit(self.index, "microphone", device_id)
+        return True
+
     def _pick_webcam(self) -> bool:
         cameras = list_cameras()
         if not cameras:
@@ -699,6 +739,9 @@ class _ChannelSlot(QWidget):
         elif kind == "audio":
             if not self._pick_audio_file():
                 self._revert_combo()
+        elif kind == "microphone":
+            if not self._pick_microphone():
+                self._revert_combo()
         elif kind == "webcam":
             if not self._pick_webcam():
                 self._revert_combo()
@@ -733,6 +776,9 @@ class _ChannelSlot(QWidget):
             return
         if self._kind == "webcam":
             self._pick_webcam()
+            return
+        if self._kind == "microphone":
+            self._pick_microphone()
             return
         path, _ = QFileDialog.getOpenFileName(
             self, f"Choisir une image pour iChannel{self.index}",

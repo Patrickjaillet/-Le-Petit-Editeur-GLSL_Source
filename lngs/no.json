@@ -335,7 +335,12 @@
       "title": "Grafikkortet støttes ikke",
       "body": "Kunne ikke starte: fant ikke noe kompatibelt grafikkort på denne datamaskinen.\n\nPrøv å oppdatere driverne for grafikkortet, og start deretter programmet på nytt.\n\nTeknisk detalj: {error}"
     },
-    "viewport_resize_error": "Forhåndsvisningen ble ikke endret i størrelse (utilstrekkelig grafikkminne): {error}"
+    "viewport_resize_error": "Forhåndsvisningen ble ikke endret i størrelse (utilstrekkelig grafikkminne): {error}",
+    "microphone_error": {
+      "title": "Mikrofon",
+      "no_microphone": "Ingen mikrofon oppdaget på denne maskinen.",
+      "microphone_prompt": "Mikrofon for iChannel{index}:"
+    }
   },
   "sliders_panel": {
     "filter_placeholder": "Filtrer…",
@@ -377,6 +382,7 @@
     "source_image": "Bilde (fil)",
     "source_video": "Video (fil)…",
     "source_audio": "Lyd (fil)…",
+    "source_microphone": "Mikrofon",
     "source_webcam": "Webkamera",
     "source_cubemap": "Cubemap (6 bilder)",
     "source_keyboard": "Tastatur (iKeyboard)",
@@ -387,6 +393,7 @@
     "change_cubemap": "Rediger sider…",
     "change_video": "Bytt video…",
     "change_audio": "Bytt lyd…",
+    "change_microphone": "Bytt mikrofon…",
     "volume_tooltip": "Volum for lydinngangen (uavhengig av systemvolumet)",
     "mute_tooltip": "Demp",
     "procedural_scale_label": "Mønsterstørrelse",
@@ -402,6 +409,7 @@
     "thumb_empty": "tom",
     "thumb_cube": "KUBE",
     "default_webcam_tooltip": "standard webkamera",
+    "default_microphone_tooltip": "standardmikrofon",
     "source_lost_tooltip": "Kilden gikk tapt: {message}"
   },
   "footer": {

@@ -335,7 +335,12 @@
       "title": "Grafikkortet stöds inte",
       "body": "Kunde inte starta: inget kompatibelt grafikkort hittades på den här datorn.\n\nProva att uppdatera drivrutinerna för grafikkortet och starta sedan om programmet.\n\nTeknisk information: {error}"
     },
-    "viewport_resize_error": "Förhandsgranskningen ändrades inte (otillräckligt grafikminne): {error}"
+    "viewport_resize_error": "Förhandsgranskningen ändrades inte (otillräckligt grafikminne): {error}",
+    "microphone_error": {
+      "title": "Mikrofon",
+      "no_microphone": "Ingen mikrofon hittades på den här datorn.",
+      "microphone_prompt": "Mikrofon för iChannel{index}:"
+    }
   },
   "sliders_panel": {
     "filter_placeholder": "Filtrera…",
@@ -377,6 +382,7 @@
     "source_image": "Bild (fil)",
     "source_video": "Video (fil)…",
     "source_audio": "Ljud (fil)…",
+    "source_microphone": "Mikrofon",
     "source_webcam": "Webbkamera",
     "source_cubemap": "Cubemap (6 bilder)",
     "source_keyboard": "Tangentbord (iKeyboard)",
@@ -387,6 +393,7 @@
     "change_cubemap": "Redigera sidor…",
     "change_video": "Byt video…",
     "change_audio": "Byt ljud…",
+    "change_microphone": "Byt mikrofon…",
     "volume_tooltip": "Ljudingångens volym (oberoende av systemvolymen)",
     "mute_tooltip": "Tyst",
     "procedural_scale_label": "Mönsterstorlek",
@@ -402,6 +409,7 @@
     "thumb_empty": "tom",
     "thumb_cube": "KUB",
     "default_webcam_tooltip": "standardwebbkamera",
+    "default_microphone_tooltip": "standardmikrofon",
     "source_lost_tooltip": "Källan förlorad: {message}"
   },
   "footer": {

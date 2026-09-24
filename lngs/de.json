@@ -335,7 +335,12 @@
       "title": "Grafikkarte nicht unterstützt",
       "body": "Start nicht möglich: Auf diesem Computer wurde keine kompatible Grafikkarte gefunden.\n\nAktualisieren Sie die Treiber Ihrer Grafikkarte und starten Sie die Software erneut.\n\nTechnische Details: {error}"
     },
-    "viewport_resize_error": "Vorschau nicht angepasst (nicht genügend Grafikspeicher): {error}"
+    "viewport_resize_error": "Vorschau nicht angepasst (nicht genügend Grafikspeicher): {error}",
+    "microphone_error": {
+      "title": "Mikrofon",
+      "no_microphone": "Kein Mikrofon auf diesem Computer erkannt.",
+      "microphone_prompt": "Mikrofon für iChannel{index}:"
+    }
   },
   "sliders_panel": {
     "filter_placeholder": "Filtern…",
@@ -377,6 +382,7 @@
     "source_image": "Bild (Datei)",
     "source_video": "Video (Datei)…",
     "source_audio": "Audio (Datei)…",
+    "source_microphone": "Mikrofon",
     "source_webcam": "Webcam",
     "source_cubemap": "Cubemap (6 Bilder)",
     "source_keyboard": "Tastatur (iKeyboard)",
@@ -387,6 +393,7 @@
     "change_cubemap": "Seiten bearbeiten…",
     "change_video": "Video ändern…",
     "change_audio": "Audio ändern…",
+    "change_microphone": "Mikrofon wechseln…",
     "volume_tooltip": "Lautstärke der Audioquelle (unabhängig von der Systemlautstärke)",
     "mute_tooltip": "Stumm",
     "procedural_scale_label": "Mustergröße",
@@ -402,6 +409,7 @@
     "thumb_empty": "leer",
     "thumb_cube": "CUBE",
     "default_webcam_tooltip": "Standard-Webcam",
+    "default_microphone_tooltip": "Standardmikrofon",
     "source_lost_tooltip": "Quelle verloren: {message}"
   },
   "footer": {

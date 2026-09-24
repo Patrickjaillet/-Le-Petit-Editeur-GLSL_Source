@@ -335,7 +335,12 @@
       "title": "Scheda grafica non supportata",
       "body": "Impossibile avviare: nessuna scheda grafica compatibile trovata su questo computer.\n\nProva ad aggiornare i driver della scheda grafica, poi riavvia il programma.\n\nDettaglio tecnico: {error}"
     },
-    "viewport_resize_error": "Anteprima non ridimensionata (memoria grafica insufficiente): {error}"
+    "viewport_resize_error": "Anteprima non ridimensionata (memoria grafica insufficiente): {error}",
+    "microphone_error": {
+      "title": "Microfono",
+      "no_microphone": "Nessun microfono rilevato su questo computer.",
+      "microphone_prompt": "Microfono per iChannel{index}:"
+    }
   },
   "sliders_panel": {
     "filter_placeholder": "Filtra…",
@@ -377,6 +382,7 @@
     "source_image": "Immagine (file)",
     "source_video": "Video (file)…",
     "source_audio": "Audio (file)…",
+    "source_microphone": "Microfono",
     "source_webcam": "Webcam",
     "source_cubemap": "Cubemap (6 immagini)",
     "source_keyboard": "Tastiera (iKeyboard)",
@@ -387,6 +393,7 @@
     "change_cubemap": "Modifica facce…",
     "change_video": "Cambia video…",
     "change_audio": "Cambia audio…",
+    "change_microphone": "Cambia microfono…",
     "volume_tooltip": "Volume dell'ingresso audio (indipendente dal volume di sistema)",
     "mute_tooltip": "Muto",
     "procedural_scale_label": "Dimensione del motivo",
@@ -402,6 +409,7 @@
     "thumb_empty": "vuoto",
     "thumb_cube": "CUBO",
     "default_webcam_tooltip": "webcam predefinita",
+    "default_microphone_tooltip": "microfono predefinito",
     "source_lost_tooltip": "Sorgente persa: {message}"
   },
   "footer": {

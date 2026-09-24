@@ -335,7 +335,12 @@
       "title": "グラフィックカードがサポートされていません",
       "body": "起動できませんでした。このコンピューターには対応するグラフィックカードが見つかりません。\n\nグラフィックカードのドライバーを更新してから、ソフトウェアを再起動してください。\n\n技術詳細: {error}"
     },
-    "viewport_resize_error": "プレビューのサイズは変更されませんでした（グラフィックメモリ不足）: {error}"
+    "viewport_resize_error": "プレビューのサイズは変更されませんでした（グラフィックメモリ不足）: {error}",
+    "microphone_error": {
+      "title": "マイク",
+      "no_microphone": "このマシンにマイクが見つかりません。",
+      "microphone_prompt": "iChannel{index} 用マイク:"
+    }
   },
   "sliders_panel": {
     "filter_placeholder": "絞り込み…",
@@ -377,6 +382,7 @@
     "source_image": "画像(ファイル)",
     "source_video": "動画(ファイル)…",
     "source_audio": "オーディオ(ファイル)…",
+    "source_microphone": "マイク",
     "source_webcam": "ウェブカメラ",
     "source_cubemap": "キューブマップ(6画像)",
     "source_keyboard": "キーボード (iKeyboard)",
@@ -387,6 +393,7 @@
     "change_cubemap": "面を編集…",
     "change_video": "動画を変更…",
     "change_audio": "オーディオを変更…",
+    "change_microphone": "マイクを変更…",
     "volume_tooltip": "オーディオ入力の音量（システム音量とは独立）",
     "mute_tooltip": "ミュート",
     "procedural_scale_label": "パターンサイズ",
@@ -402,6 +409,7 @@
     "thumb_empty": "空",
     "thumb_cube": "CUBE",
     "default_webcam_tooltip": "既定のウェブカメラ",
+    "default_microphone_tooltip": "デフォルトのマイク",
     "source_lost_tooltip": "ソースが失われました: {message}"
   },
   "footer": {

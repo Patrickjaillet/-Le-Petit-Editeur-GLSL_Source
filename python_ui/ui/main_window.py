@@ -48,7 +48,7 @@ from ui.monaco_editor import MonacoEditor
 from ui.shortcuts_dialog import ShortcutsDialog
 from ui.sliders_panel import SlidersPanel
 from ui.viewport import VIEWPORT_HEIGHT, VIEWPORT_WIDTH, Viewport
-from audio_source import AudioChannelSource
+from audio_source import AudioChannelSource, MicrophoneChannelSource
 from video_source import VideoChannelSource
 
 DEFAULT_SHADER_PATH = Path(__file__).resolve().parent.parent / "assets" / "shaders" / "default.frag"
@@ -1896,6 +1896,8 @@ class MainWindow(QMainWindow):
                 self._start_video_channel(pass_idx, channel_idx, value)
             elif kind == "audio":
                 self._start_audio_channel(pass_idx, channel_idx, value)
+            elif kind == "microphone":
+                self._start_microphone_channel(pass_idx, channel_idx, value)
             elif kind == "webcam":
                 self._start_webcam_channel(pass_idx, channel_idx, value)
             elif kind == "cubemap":
@@ -2034,6 +2036,31 @@ class MainWindow(QMainWindow):
         except Exception as exc:  # noqa: BLE001 - Qt's own playback errors vary in type
             QMessageBox.warning(self, tr("dialogs.audio_error.title"), tr("dialogs.audio_error.body", path=path, error=exc))
 
+    def _start_microphone_channel(self, pass_idx: int, channel_idx: int, device_id: str) -> None:
+        """Live mic capture as an iChannel audio source (RESTE.md: "entrée
+        microphone en direct... à faire au besoin dans un ticket dédié une
+        fois l'audio fichier en place et éprouvé" -- that ticket). Reuses
+        `self._audio_sources` (same dict as file-based audio channels, not
+        a separate one): `_on_audio_tick`/`_stop_audio_channel`/
+        `_on_source_lost` already only care about `compute_frame()`/
+        `position_seconds()`/`is_active()`/`sourceLost`, all of which
+        `MicrophoneChannelSource` implements identically to
+        `AudioChannelSource` -- no kind check needed anywhere else. Same
+        engine call as file-based audio (`set_ichannel_audio`): a mic is
+        just another producer of the same 512x2 texture at the Rust side,
+        see `MicrophoneChannelSource`'s own docstring for why it's never
+        played back audibly, unlike the file-based channel."""
+        try:
+            self._engine.set_ichannel_audio(pass_idx, channel_idx)
+        except RuntimeError as exc:
+            QMessageBox.warning(self, tr("dialogs.ichannel_error.title"), str(exc))
+            return
+        source = MicrophoneChannelSource(self)
+        source.sourceLost.connect(lambda msg, p=pass_idx, c=channel_idx: self._on_source_lost(p, c, msg))
+        self._audio_sources[(pass_idx, channel_idx)] = source
+        if not source.start(device_id):
+            QMessageBox.warning(self, tr("dialogs.microphone_error.title"), tr("dialogs.microphone_error.no_microphone"))
+
     def _on_source_lost(self, pass_idx: int, channel_idx: int, message: str) -> None:
         """RM10.md section 1, item 6: a webcam/video/audio source that was
         already streaming failed or disconnected mid-use (device unplugged,
@@ -2125,7 +2152,12 @@ class MainWindow(QMainWindow):
         in `IChannelPanel` and applied the moment a source does start, see
         `_start_audio_channel`."""
         source = self._audio_sources.get((pass_idx, channel_idx))
-        if source is not None:
+        # `MicrophoneChannelSource` has no volume/mute (never played back
+        # audibly, see its own docstring) -- its combo entry hides the
+        # volume row entirely, so this shouldn't normally fire for one,
+        # but `isinstance` here costs nothing and avoids a hard crash if
+        # it somehow does.
+        if isinstance(source, AudioChannelSource):
             source.set_volume(volume)
             source.set_muted(muted)
 

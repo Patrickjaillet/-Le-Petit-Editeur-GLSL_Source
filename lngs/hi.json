@@ -335,7 +335,12 @@
       "title": "असमर्थित ग्राफ़िक्स कार्ड",
       "body": "शुरू नहीं हो सका: इस कंप्यूटर पर कोई संगत ग्राफ़िक्स कार्ड नहीं मिला।\n\nअपने ग्राफ़िक्स कार्ड ड्राइवर को अपडेट करने का प्रयास करें, फिर सॉफ़्टवेयर को फिर से लॉन्च करें।\n\nतकनीकी विवरण: {error}"
     },
-    "viewport_resize_error": "पूर्वावलोकन का आकार नहीं बदला गया (ग्राफ़िक्स मेमोरी अपर्याप्त): {error}"
+    "viewport_resize_error": "पूर्वावलोकन का आकार नहीं बदला गया (ग्राफ़िक्स मेमोरी अपर्याप्त): {error}",
+    "microphone_error": {
+      "title": "माइक्रोफ़ोन",
+      "no_microphone": "इस मशीन पर कोई माइक्रोफ़ोन नहीं मिला।",
+      "microphone_prompt": "iChannel{index} के लिए माइक्रोफ़ोन:"
+    }
   },
   "sliders_panel": {
     "filter_placeholder": "फ़िल्टर करें…",
@@ -377,6 +382,7 @@
     "source_image": "इमेज (फ़ाइल)",
     "source_video": "वीडियो (फ़ाइल)…",
     "source_audio": "ऑडियो (फ़ाइल)…",
+    "source_microphone": "माइक्रोफ़ोन",
     "source_webcam": "वेबकैम",
     "source_cubemap": "क्यूबमैप (6 इमेज)",
     "source_keyboard": "कीबोर्ड (iKeyboard)",
@@ -387,6 +393,7 @@
     "change_cubemap": "फेस संपादित करें…",
     "change_video": "वीडियो बदलें…",
     "change_audio": "ऑडियो बदलें…",
+    "change_microphone": "माइक्रोफ़ोन बदलें…",
     "volume_tooltip": "ऑडियो इनपुट वॉल्यूम (सिस्टम वॉल्यूम से स्वतंत्र)",
     "mute_tooltip": "म्यूट",
     "procedural_scale_label": "पैटर्न आकार",
@@ -402,6 +409,7 @@
     "thumb_empty": "खाली",
     "thumb_cube": "क्यूब",
     "default_webcam_tooltip": "डिफ़ॉल्ट वेबकैम",
+    "default_microphone_tooltip": "डिफ़ॉल्ट माइक्रोफ़ोन",
     "source_lost_tooltip": "स्रोत खो गया: {message}"
   },
   "footer": {
