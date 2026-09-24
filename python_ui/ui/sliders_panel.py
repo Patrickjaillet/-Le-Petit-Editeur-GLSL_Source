@@ -438,14 +438,25 @@ class SlidersPanel(QTabWidget):
     #
     # A slider has no identity beyond its position in the source, which is
     # meaningless across a save/reload round-trip (or even a same-session
-    # structural rebuild — see `_edit_range`'s docstring). The best
-    # available identity is (category, kind, index-within-that-category-
-    # and-kind, in source-position order): stable as long as the user
-    # hasn't added/removed/reordered literals of that kind within that
-    # category since the layout was captured. When it has, entries past
-    # the point of divergence simply find nothing to match in
-    # `apply_layout` and are dropped silently — best-effort, not a
-    # guarantee, exactly as the roadmap entry describes.
+    # structural rebuild — see `_edit_range`'s docstring). The primary
+    # identity is (category, kind, index-within-that-category-and-kind, in
+    # source-position order): stable as long as the user hasn't added/
+    # removed/reordered literals of that kind within that category since
+    # the layout was captured.
+    #
+    # When it has (RESTE.md: "un override ne survit pas à un rebuild
+    # structurel complet"), `_match_layout_entries` falls back to matching
+    # by value proximity within the same (category, kind) group instead of
+    # dropping the entry outright: a literal's own freshly-parsed value at
+    # rebuild time (`initial_value`) is exported alongside min/max, and an
+    # index-unmatched row is paired with whichever unclaimed entry's
+    # recorded initial_value is numerically closest to its own -- covers
+    # the overwhelmingly common case (an unrelated literal added/removed
+    # elsewhere in the same category shifts every later index without
+    # changing any existing value). Still best-effort, not a guarantee: an
+    # entry with no remaining candidate in its group, or a group where
+    # every remaining candidate is a worse match for some other row, is
+    # still dropped silently, exactly as the roadmap entry describes.
     #
     # Only float/int (scalar) sliders carry an overridable min/max/
     # decimals or keyframes today; bool/vec sliders have nothing to export.
@@ -468,6 +479,14 @@ class SlidersPanel(QTabWidget):
                 "index": index,
                 "min": spin.minimum(),
                 "max": spin.maximum(),
+                # The literal's own freshly-parsed value at this rebuild
+                # (not `spin.value()`, which may have been dragged away
+                # from it) -- used only as a fallback identity signal by
+                # `apply_layout` when a structural rebuild has changed how
+                # many literals exist in this (category, kind) and the
+                # exact `index` this entry was recorded under no longer
+                # points at the same slider.
+                "initial_value": state.initial_value,
             }
             if state.kind == "float":
                 entry["decimals"] = spin.decimals()
@@ -481,27 +500,117 @@ class SlidersPanel(QTabWidget):
             layout.append(entry)
         return layout
 
-    def apply_layout(self, layout: list[dict]) -> None:
-        """Reapplies a previously-exported layout onto the rows just built
-        by `rebuild()`. Silently skips any entry that no longer matches
-        (see class-level note above)."""
-        if not layout:
-            return
-        by_key: dict[tuple, dict] = {}
+    def _match_layout_entries(self, layout: list[dict]) -> dict[int, dict]:
+        """Maps each current row's ordinal to the layout entry it should
+        use, deciding *per `(category, kind)` group* between two
+        strategies:
+
+        1. **Exact match** on `(category, kind, index)`, same as before
+           this fallback existed -- used whenever the group's row count
+           now matches the number of entries the layout recorded for that
+           same group, the fast/cheap common case when nothing structural
+           changed since the layout was captured. Index-matching a group
+           whose count *did* change would be worse than not matching at
+           all: it greedily claims entries by raw position regardless of
+           value, so e.g. a literal inserted earlier in the group shifts
+           every later index by one and silently hands each existing
+           override to the *wrong* neighboring slider instead of leaving
+           it for the one it actually belongs to.
+        2. **Value-proximity fallback**, used for a group whose row count
+           does *not* match its entry count (RESTE.md: "un override ne
+           survit pas à un rebuild structurel complet") -- globally pairs
+           rows with entries by ascending `|row.initial_value -
+           entry.initial_value|` distance (closest, unambiguous pairs
+           claimed first), where `initial_value` on both sides is "the
+           value as first parsed from source at rebuild time", so a
+           literal that kept roughly the same value across the rebuild --
+           the overwhelmingly common case -- still finds its saved
+           override even though its index shifted.
+
+        Best-effort by construction, same as the `(category, type, index)`
+        identity itself (see the class-level docstring): a genuine edit of
+        a literal's own value at the same time as a structural change can
+        still pick the wrong entry, or none at all if every candidate is
+        already a worse match for some other row. Never raises, never
+        crashes on a malformed/missing `"index"`/`"initial_value"` key --
+        such entries simply aren't available for either strategy.
+        """
+        entries_by_group: dict[tuple, list[dict]] = {}
+        entry_count_by_group: dict[tuple, int] = {}
         for entry in layout:
             try:
-                by_key[(entry["category"], entry["kind"], entry["index"])] = entry
+                key_group = (entry["category"], entry["kind"])
             except (KeyError, TypeError):
                 continue
+            entries_by_group.setdefault(key_group, []).append(entry)
+            entry_count_by_group[key_group] = entry_count_by_group.get(key_group, 0) + 1
 
+        rows_by_group: dict[tuple, list[int]] = {}
         counts: dict[tuple[str, str], int] = {}
         for ordinal, (state, widgets) in enumerate(zip(self._literals, self._rows)):
             if widgets is None or state.kind not in ("float", "int"):
                 continue
             key = (state.category, state.kind)
-            index = counts.get(key, 0)
-            counts[key] = index + 1
-            entry = by_key.get((state.category, state.kind, index))
+            counts[key] = counts.get(key, 0) + 1
+            rows_by_group.setdefault(key, []).append(ordinal)
+
+        ordinal_entry: dict[int, dict] = {}
+        for group, ordinals in rows_by_group.items():
+            entries = entries_by_group.get(group, [])
+            if not entries:
+                continue
+            if counts.get(group, 0) == entry_count_by_group.get(group, 0):
+                # Unchanged group size: cheap, exact index match, same
+                # behavior as before this fallback existed.
+                by_index = {e.get("index"): e for e in entries}
+                for position, ordinal in enumerate(ordinals):
+                    entry = by_index.get(position)
+                    if entry is not None:
+                        ordinal_entry[ordinal] = entry
+                continue
+
+            # Group size changed: index no longer means anything for this
+            # group, match by value proximity instead. Global greedy over
+            # every (row, entry) pair, closest distance first, rather than
+            # resolving one row at a time in source order: a per-row
+            # "closest still-available entry" pass can let an earlier row
+            # grab an entry that's actually a much better match for a
+            # *later* row, purely because it happened to be processed
+            # first (e.g. with values 1, 5, 100 and entries 1, 100: row `5`
+            # would otherwise grab entry `1` first, leaving row `1` stuck
+            # with the wildly-wrong entry `100` and row `100` unmatched).
+            # Sorting every pair by distance and assigning greedily always
+            # honors the two closest, unambiguous pairs first.
+            candidates = [e for e in entries if isinstance(e.get("initial_value"), (int, float))]
+            pairs = []
+            for ordinal in ordinals:
+                target = self._literals[ordinal].initial_value
+                for entry in candidates:
+                    pairs.append((abs(float(entry["initial_value"]) - float(target)), ordinal, id(entry), entry))
+            pairs.sort(key=lambda p: p[0])
+            claimed_ordinals: set[int] = set()
+            claimed_entry_ids: set[int] = set()
+            for _distance, ordinal, entry_id, entry in pairs:
+                if ordinal in claimed_ordinals or entry_id in claimed_entry_ids:
+                    continue
+                ordinal_entry[ordinal] = entry
+                claimed_ordinals.add(ordinal)
+                claimed_entry_ids.add(entry_id)
+        return ordinal_entry
+
+    def apply_layout(self, layout: list[dict]) -> None:
+        """Reapplies a previously-exported layout onto the rows just built
+        by `rebuild()`. Silently skips any entry that no longer matches
+        (see class-level note above) -- except for a best-effort fallback,
+        see `_match_layout_entries`."""
+        if not layout:
+            return
+        ordinal_entry = self._match_layout_entries(layout)
+
+        for ordinal, (state, widgets) in enumerate(zip(self._literals, self._rows)):
+            if widgets is None or state.kind not in ("float", "int"):
+                continue
+            entry = ordinal_entry.get(ordinal)
             if entry is None:
                 continue
 
