@@ -291,6 +291,8 @@
       "min": "最小",
       "max": "最大",
       "decimals": "小数桁数",
+      "step": "ステップ",
+      "step_auto": "自動",
       "menu_edit": "最小 / 最大を編集…"
     },
     "keyframe_curve": {

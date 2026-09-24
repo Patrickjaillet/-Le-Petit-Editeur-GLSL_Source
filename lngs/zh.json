@@ -291,6 +291,8 @@
       "min": "最小值",
       "max": "最大值",
       "decimals": "小数位数",
+      "step": "步长",
+      "step_auto": "自动",
       "menu_edit": "编辑最小值/最大值…"
     },
     "keyframe_curve": {
