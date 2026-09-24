@@ -108,7 +108,13 @@ print("_goto_tab switches Monaco's language immediately on tab change: ok")
 # ---- 5. Common tab can itself contain WGSL and gets colored accordingly --
 
 window._goto_tab(COMMON_TAB)
-window._on_text_changed("fn helper(x: f32) -> f32 { return x + 1.0; }\n")
+# `fn helper(x: f32) -> f32 { return x + 1.0; }` alone carries *no* real
+# WGSL-only syntax (dialect.rs's `matches_wgsl_uniform_or_generic_type`
+# needs an actual `var<uniform`/`var<storage` qualifier, or a generic
+# *constructor call* like `vec3<f32>(...)` -- a bare `<...>` type
+# annotation with no trailing `(` doesn't count) -- it was a stale
+# fixture that never exercised the signal its own assertion named.
+window._on_text_changed("fn helper(x: f32) -> vec3<f32> { return vec3<f32>(x, x, x); }\n")
 window._recompile_current_tab()
 assert current_model_language() == "wgsl", "Common written in WGSL (helper fn, no entry point) should still highlight as WGSL"
 print("Common tab written in WGSL gets the 'wgsl' tokenizer too: ok")

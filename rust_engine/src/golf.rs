@@ -5138,10 +5138,16 @@ mod inline_single_call_tests {
     }
 
     #[test]
-    fn called_more_than_once_never_inlined() {
+    fn called_more_than_once_is_inlined_at_every_call_site() {
+        // Stale name/assertion from before `inline_single_call_functions` was
+        // generalized from "exactly one call site" to "any number of call
+        // sites" (see `find_all_call_sites`/`inline_at_call_sites`) — a
+        // non-repeated parameter poses no duplication risk, so every call
+        // site is substituted independently and the declaration disappears.
         let src = "float foo(float x){return x*2.;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(foo(1.)+foo(2.));\n}";
         let out = inline_single_call_functions(&strip_comments(src));
-        assert!(out.contains("float foo("), "a function called twice must never be inlined: {out}");
+        assert!(!out.contains("float foo("), "a function with a non-repeated parameter, called any number of times, should be inlined at every site: {out}");
+        assert!(out.contains("((1.)*2.)") && out.contains("((2.)*2.)"), "each call site should substitute its own argument independently: {out}");
     }
 
     #[test]
@@ -5233,7 +5239,10 @@ mod inline_single_call_tests {
         let src = "float foo(float x){return x*x;}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nfragColor=vec4(foo(1.)+foo(2.));\n}";
         let out = inline_single_call_functions(&strip_comments(src));
         assert!(out.contains("float foo("), "a parameter used more than once in the body must never be duplicated at any call site: {out}");
-        assert_eq!(out.matches("foo(").count(), 2, "expected both original call sites left completely untouched: {out}");
+        // 3, not 2: the declaration itself ("float foo(...") plus the two
+        // untouched call sites ("foo(1.)"/"foo(2.)") each contribute one
+        // "foo(" occurrence.
+        assert_eq!(out.matches("foo(").count(), 3, "expected the declaration and both original call sites left completely untouched: {out}");
     }
 
     #[test]

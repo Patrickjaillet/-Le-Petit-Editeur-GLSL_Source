@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+rust_engine/target/
+dist/
+packaging/output/
+*.egg-info/
